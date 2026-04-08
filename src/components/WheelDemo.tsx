@@ -87,7 +87,6 @@ const WheelDemo = () => {
             return prev + (targetRotation.current - prev) / 400;
           }
         });
-        console.log(targetRotation.current);
       }, 1);
       return () => clearInterval(interval);
     }
