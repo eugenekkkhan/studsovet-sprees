@@ -1,10 +1,11 @@
 import './App.css'
-import TheMostHonestRandomRoulette from './components/TheMostHonestRandomRoulette'
+import Header from './components/Header'
+import RouterComponent from './components/Routing/RouterComponent'
 
 function App() {
   return (
     <>
-      <TheMostHonestRandomRoulette />
+      <RouterComponent />
     </>
   )
 }
