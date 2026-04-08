@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import "./WheelDemo.css";
+
 type Entity = {
   title: string;
   color: string;
