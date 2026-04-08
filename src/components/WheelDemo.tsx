@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import "./WheelDemo.css";
-import audio from "../assets/v-krayu.mp3";
-type Movie = {
+type Entity = {
   title: string;
   color: string;
 };
 
 const WheelDemo = () => {
   const [spinning, setSpinning] = useState<boolean>(false);
-  const [movies, setMovies] = useState<Movie[]>(() => {
-    const savedMovies = localStorage.getItem("wheelMovies");
-    return savedMovies ? JSON.parse(savedMovies) : [];
+  const [entities, setEntities] = useState<Entity[]>(() => {
+    const savedEntities = localStorage.getItem("wheelEntities");
+    return savedEntities ? JSON.parse(savedEntities) : [];
   });
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [preferredMovieIndex, setPreferredMovieIndex] = useState<number | null>(
-    null
-  );
-  const [winResult, setWinResult] = useState<Movie | null>(null);
-  const [inputMovie, setInputMovie] = useState<string>("");
+  const [preferredEntityIndex, setPreferredEntityIndex] = useState<
+    number | null
+  >(null);
+  const [winResult, setWinResult] = useState<Entity | null>(null);
+  const [inputEntity, setInputEntity] = useState<string>("");
   function randomColor(): string {
     const hue = Math.floor(Math.random() * 360);
     const saturation = 70; // vivid but not neon
@@ -27,40 +25,31 @@ const WheelDemo = () => {
   const [rotation, setRotation] = useState<number>(0);
   const targetRotation = useRef<number>(0);
 
-  // Сохранение фильмов в localStorage при их изменении
+  // Сохранение сущностей в localStorage при их изменении
   useEffect(() => {
-    localStorage.setItem("wheelMovies", JSON.stringify(movies));
-  }, [movies]);
+    localStorage.setItem("wheelEntities", JSON.stringify(entities));
+  }, [entities]);
 
-  const startAudio = () => {
-    audioRef?.current?.play();
-  };
-
-  const stopAudio = () => {
-    audioRef?.current?.pause();
-    audioRef?.current?.currentTime && (audioRef.current.currentTime = 0); // reset to beginning
-  };
-
-  const clearAllMovies = () => {
-    setMovies([]);
+  const clearAllEntities = () => {
+    setEntities([]);
     setWinResult(null);
-    setPreferredMovieIndex(null);
-    localStorage.removeItem("wheelMovies");
+    setPreferredEntityIndex(null);
+    localStorage.removeItem("wheelEntities");
   };
 
   const degreesToIndex = (degrees: number) => {
-    const sliceAngle = 360 / movies.length;
+    const sliceAngle = 360 / entities.length;
     // Normalize to 0-360 range
     const normalizedDegrees = ((degrees % 360) + 360) % 360;
     // Calculate index
     const index = Math.floor(normalizedDegrees / sliceAngle);
     // Clamp to valid range
-    return Math.min(index, movies.length - 1);
+    return Math.min(index, entities.length - 1);
   };
 
   const targetRotationBasedOnPreferred = (indexOfPreferred: number) => {
-    if (indexOfPreferred !== null && indexOfPreferred < movies.length) {
-      const sliceAngle = 360 / movies.length;
+    if (indexOfPreferred !== null && indexOfPreferred < entities.length) {
+      const sliceAngle = 360 / entities.length;
 
       const offset =
         sliceAngle * (indexOfPreferred + 1) -
@@ -77,11 +66,10 @@ const WheelDemo = () => {
           if (targetRotation.current <= Math.round(prev)) {
             setSpinning(false);
             clearInterval(interval);
-            const winningMovie = movies.find(
-              (_, index) => degreesToIndex(targetRotation.current) === index
+            const winningEntity = entities.find(
+              (_, index) => degreesToIndex(targetRotation.current) === index,
             );
-            setWinResult(winningMovie || null);
-            startAudio();
+            setWinResult(winningEntity || null);
             return prev;
           } else {
             return prev + (targetRotation.current - prev) / 400;
@@ -106,22 +94,25 @@ const WheelDemo = () => {
       <div style={{ display: "flex", gap: "12px", width: "100%" }}>
         <input
           style={{ width: "70%" }}
-          value={inputMovie}
-          onChange={(e) => setInputMovie(e.target.value)}
+          value={inputEntity}
+          onChange={(e) => setInputEntity(e.target.value)}
         />
         <button
           style={{ width: "30%" }}
           onClick={() => {
-            setMovies([...movies, { title: inputMovie, color: randomColor() }]);
-            setInputMovie("");
+            setEntities([
+              ...entities,
+              { title: inputEntity, color: randomColor() },
+            ]);
+            setInputEntity("");
           }}
-          disabled={!inputMovie}
+          disabled={!inputEntity}
         >
-          Добавить фильм
+          Добавить
         </button>
       </div>
       {/* wheel */}
-      {movies.length > 0 && (
+      {entities.length > 0 && (
         <>
           <div
             style={{
@@ -157,28 +148,14 @@ const WheelDemo = () => {
                     setRotation(0);
                     targetRotation.current =
                       360 * 5 +
-                      (preferredMovieIndex !== null
-                        ? targetRotationBasedOnPreferred(preferredMovieIndex)
+                      (preferredEntityIndex !== null
+                        ? targetRotationBasedOnPreferred(preferredEntityIndex)
                         : Math.floor(Math.random() * 360));
                   }}
-                  disabled={movies.length === 0}
+                  disabled={entities.length === 0}
                 >
                   Крутить колесо
                 </button>
-                {audioRef.current && !audioRef?.current?.paused && (
-                  <button
-                    style={{
-                      width: "100%",
-                      backgroundColor: "#f44336",
-                      color: "white",
-                    }}
-                    onClick={() => {
-                      stopAudio();
-                    }}
-                  >
-                    Стоп мне неприятно
-                  </button>
-                )}
               </>
             )}
           </div>
@@ -221,9 +198,9 @@ const WheelDemo = () => {
                 zIndex: 10,
               }}
             ></span>
-            {movies.map((movie, index) => {
-              const angle = (index * 360) / movies.length;
-              const nextAngle = ((index + 1) * 360) / movies.length;
+            {entities.map((entity, index) => {
+              const angle = (index * 360) / entities.length;
+              const nextAngle = ((index + 1) * 360) / entities.length;
               return (
                 <div
                   key={index}
@@ -236,11 +213,11 @@ const WheelDemo = () => {
                     top: "0",
                     left: "0",
                     background: `conic-gradient(transparent ${
-                      (index / movies.length) * 100
-                    }%, ${movie.color} ${(index / movies.length) * 100}%, ${
-                      movie.color
-                    } ${((index + 1) / movies.length) * 100}%, transparent ${
-                      ((index + 1) / movies.length) * 100
+                      (index / entities.length) * 100
+                    }%, ${entity.color} ${(index / entities.length) * 100}%, ${
+                      entity.color
+                    } ${((index + 1) / entities.length) * 100}%, transparent ${
+                      ((index + 1) / entities.length) * 100
                     }%)`,
                     rotate: `-${rotation}deg`,
                   }}
@@ -276,14 +253,14 @@ const WheelDemo = () => {
                         zIndex: 50,
                       }}
                     >
-                      {movie.title}
+                      {entity.title}
                     </p>
                   </div>
                 </div>
               );
             })}
           </div>
-          {/* Movie list with removable items */}
+          {/* Entity list with removable items */}
           <div
             style={{
               display: "flex",
@@ -293,7 +270,7 @@ const WheelDemo = () => {
               alignItems: "flex-start",
             }}
           >
-            <h2>Список фильмов:</h2>
+            <h2>Список:</h2>
             <div
               style={{
                 display: "flex",
@@ -303,7 +280,7 @@ const WheelDemo = () => {
               }}
             >
               <button
-                onClick={clearAllMovies}
+                onClick={clearAllEntities}
                 style={{
                   backgroundColor: "#f44336",
                   color: "white",
@@ -312,28 +289,28 @@ const WheelDemo = () => {
                   borderRadius: "4px",
                   cursor: "pointer",
                 }}
-                disabled={movies.length === 0}
+                disabled={entities.length === 0}
               >
-                Очистить все фильмы
+                Очистить всё
               </button>
             </div>
-            {movies.map((movie, index) => (
+            {entities.map((entity, index) => (
               <div
                 key={index}
                 onClick={() => {
-                  setPreferredMovieIndex(index);
+                  setPreferredEntityIndex(index);
                 }}
                 style={{
-                  color: movie.color,
+                  color: entity.color,
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
                 }}
               >
-                <p>{movie.title}</p>
+                <p>{entity.title}</p>
                 <button
                   onClick={() => {
-                    setMovies(movies.filter((_, i) => i !== index));
+                    setEntities(entities.filter((_, i) => i !== index));
                   }}
                   style={{ color: "red" }}
                 >
@@ -354,7 +331,6 @@ const WheelDemo = () => {
             (rotation / targetRotation.current),
         }}
       ></div>
-      <audio ref={audioRef} src={audio} />
     </div>
   );
 };
