@@ -1,10 +1,10 @@
 import './App.css'
-import WheelDemo from './components/WheelDemo'
+import TheMostHonestRandomRoulette from './components/TheMostHonestRandomRoulette'
 
 function App() {
   return (
     <>
-      <WheelDemo />
+      <TheMostHonestRandomRoulette />
     </>
   )
 }

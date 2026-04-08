@@ -5,7 +5,7 @@ type Entity = {
   color: string;
 };
 
-const WheelDemo = () => {
+const TheMostHonestRandomRoulette = () => {
   const [spinning, setSpinning] = useState<boolean>(false);
   const [entities, setEntities] = useState<Entity[]>(() => {
     const savedEntities = localStorage.getItem("wheelEntities");
@@ -335,4 +335,4 @@ const WheelDemo = () => {
   );
 };
 
-export default WheelDemo;
+export default TheMostHonestRandomRoulette;
