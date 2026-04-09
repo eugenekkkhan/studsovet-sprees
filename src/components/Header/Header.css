@@ -17,3 +17,17 @@
   gap: 16px;
   padding: 1em;
 }
+
+.header-link {
+  color: rgb(26, 26, 26);
+  text-decoration: none;
+  transition: color 0.25s;
+}
+
+.header-link:hover {
+  color: #969696;
+}
+
+.header-link.active {
+  color: #646cff;
+}
