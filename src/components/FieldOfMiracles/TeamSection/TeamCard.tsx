@@ -187,7 +187,11 @@ const MinTeamCard = ({ team }: { team: Team }) => {
       </h3>
       <p>
         {team.points}{" "}
-        {team.points === 1 ? "очка" : team.points < 5 ? "очка" : "очков"}
+        {team.points % 10 === 1
+          ? "очко"
+          : team.points % 10 < 5
+            ? "очка"
+            : "очков"}
       </p>
     </div>
   );
