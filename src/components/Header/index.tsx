@@ -31,6 +31,7 @@ const Header = () => {
   const links = [
     { text: "Колесо удачи", path: "/roulette" },
     { text: "Поле чудес", path: "/field-of-miracles" },
+    { text: "Квиз", path: "/quiz" },
   ];
 
   return (

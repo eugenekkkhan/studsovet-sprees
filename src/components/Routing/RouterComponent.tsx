@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router";
 import TheMostHonestRandomRoulette from "../TheMostHonestRandomRoulette";
 import Header from "../Header";
 import FieldOfMiracles from "../FieldOfMiracles";
+import Quiz from "../Quiz";
 
 const renderMultiRoutes = ({
   paths,
@@ -25,6 +26,7 @@ const RouterComponent = () => {
           element: <TheMostHonestRandomRoulette />,
         })}
         <Route path="/field-of-miracles" element={<FieldOfMiracles />} />
+        <Route path="/quiz" element={<Quiz />} />
       </Routes>
     </BrowserRouter>
   );

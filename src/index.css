@@ -53,7 +53,7 @@ button:disabled {
   cursor: not-allowed;
 }
 button:hover {
-  border-color: #646cff;
+  opacity: 0.85;
 }
 
 .round-button {
