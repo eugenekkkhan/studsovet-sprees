@@ -1,14 +1,11 @@
-import "./App.css";
-import RouterComponent from "./components/Routing/RouterComponent";
-import ToastWrapper from "./components/Toast/ToastWrapper";
+import { ToastWrapper } from "./components/organisms";
+import AppRouter from "./routes/AppRouter";
 
-function App() {
-  return (
-    <>
-      <RouterComponent />
-      <ToastWrapper />
-    </>
-  );
-}
+const App = () => (
+  <>
+    <AppRouter />
+    <ToastWrapper />
+  </>
+);
 
 export default App;
