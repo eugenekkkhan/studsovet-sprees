@@ -1,321 +1,295 @@
-import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
-import { GameState, Team, Round, Category, Question } from './types';
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
+import { MAX_DECK_BYTES } from '../decks/decks.service';
+import { applyCommand, createInitialGameState } from './engine';
+import {
+  createTeamIdentity,
+  ensureHostJoinKey,
+  ensureTeamKeys,
+  HOST_JOIN_KEY_LENGTH,
+  makeKey,
+  ROOM_CODE_LENGTH,
+  sanitizeInitialTeams,
+  TEAM_KEY_LENGTH,
+  tokensMatch,
+} from './session/keys';
+import {
+  denyParticipantCommand,
+  toEngineCommand,
+} from './session/participant-rules';
+import { RoomStore } from '../common/room-store';
+import { toHostState, toPublicState } from './session/projection';
+import type {
+  CommandResult,
+  GameSession,
+  StoredGameState,
+  HostCommand,
+  HostGameState,
+  ParticipantCommand,
+  PublicGameState,
+  Team,
+} from './types';
 
+/** Комната без единого обращения столько времени считается брошенной. */
+const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const SWEEP_INTERVAL_MS = 60 * 1000;
+/** Потолок на процесс: комнату открывают вошедшие, но и их стоит ограничить. */
+const MAX_ROOMS = 200;
+
+/**
+ * Команды, после которых снимок пишется сразу, не дожидаясь паузы: они
+ * задают весь дальнейший ход игры, и терять их на падении обиднее всего.
+ */
+const FLUSH_AFTER = new Set<HostCommand['type']>([
+  'LOAD_DECK',
+  'START_ROUND',
+  'START_FINAL',
+  'END_ROUND',
+  'NEW_GAME',
+]);
+
+/** Тот же потолок, что и у библиотеки колод: правило одно на оба пути. */
+const deckTooHeavy = (deck: unknown) => {
+  try {
+    return Buffer.byteLength(JSON.stringify(deck) ?? '') > MAX_DECK_BYTES;
+  } catch {
+    // Циклическая ссылка в присланном объекте — колода в любом случае негодная.
+    return true;
+  }
+};
+
+/** Комнаты живут в памяти процесса — как и в «Поле чудес». */
 @Injectable()
-export class QuizService {
-  private state: GameState = {
-    rounds: [],
-    activeRoundId: null,
-    activeQuestion: null,
-    teams: [],
-    phase: 'lobby',
-  };
+export class QuizService implements OnModuleInit, OnModuleDestroy {
+  private readonly sessions = new Map<string, GameSession>();
+  /** Владелец — проверенный пользователь сессии, а не строка с клиента. */
+  private readonly sessionsByOwner = new Map<number, string>();
+  private readonly sweeper: NodeJS.Timeout;
 
-  private captainSessions = new Map<string, string>(); // socketId -> teamId
+  // Поле, а не параметр конструктора: Nest тогда нечего внедрять, и служба
+  // одинаково создаётся и приложением, и тестом.
+  private readonly store = new RoomStore<StoredGameState>('quiz-rooms');
 
-  getState(): GameState {
-    return JSON.parse(JSON.stringify(this.state));
+  constructor() {
+    this.sweeper = setInterval(() => this.sweep(), SWEEP_INTERVAL_MS);
+    // Сборщик не должен держать процесс живым сам по себе.
+    this.sweeper.unref?.();
   }
 
-  // --- Teams ---
-
-  addTeam(name: string, color: string): Team {
-    const team: Team = { id: randomUUID(), name, score: 0, color };
-    this.state.teams.push(team);
-    return team;
+  /**
+   * Поднимает комнаты с прошлого запуска. Иначе рестарт сервера посреди игры
+   * менял код комнаты, и розданные капитанам QR разом становились мусором.
+   */
+  onModuleInit() {
+    const now = Date.now();
+    for (const session of this.store.loadAll()) {
+      if (now - session.lastActivityAt > ROOM_TTL_MS) {
+        this.store.forget(session.code);
+        continue;
+      }
+      this.sessions.set(session.code, session);
+      if (session.ownerUserId !== null) {
+        this.sessionsByOwner.set(session.ownerUserId, session.code);
+      }
+    }
   }
 
-  updateTeam(
-    id: string,
-    updates: Partial<Pick<Team, 'name' | 'color' | 'score'>>,
-  ): Team | null {
-    const team = this.state.teams.find((t) => t.id === id);
-    if (!team) return null;
-    Object.assign(team, updates);
-    return team;
+  onModuleDestroy() {
+    clearInterval(this.sweeper);
+    // Останов сервера — последний шанс дописать отложенные снимки.
+    for (const session of this.sessions.values()) this.store.flush(session);
   }
 
-  deleteTeam(id: string): boolean {
-    const idx = this.state.teams.findIndex((t) => t.id === id);
-    if (idx === -1) return false;
-    this.state.teams.splice(idx, 1);
+  /**
+   * Открывает комнату. Один владелец держит одну комнату: повторный вызов
+   * возвращает ту же, чтобы перезагрузка страницы не плодила пустышки.
+   */
+  createSession(ownerUserId: number | null, initialTeams: Array<Partial<Team>> = []) {
+    const existing =
+      ownerUserId === null
+        ? undefined
+        : this.sessions.get(this.sessionsByOwner.get(ownerUserId) ?? '');
+    if (existing) return this.describeSession(this.touch(existing));
+
+    if (this.sessions.size >= MAX_ROOMS) {
+      // Сначала пробуем освободить место просроченными, и только потом отказываем.
+      this.sweep();
+      if (this.sessions.size >= MAX_ROOMS) return null;
+    }
+
+    let code = makeKey(ROOM_CODE_LENGTH);
+    while (this.sessions.has(code)) code = makeKey(ROOM_CODE_LENGTH);
+    const now = Date.now();
+    const session: GameSession = {
+      code,
+      hostToken: randomBytes(32).toString('hex'),
+      hostJoinKey: makeKey(HOST_JOIN_KEY_LENGTH),
+      ownerUserId,
+      game: createInitialGameState(sanitizeInitialTeams(initialTeams)),
+      createdAt: now,
+      lastActivityAt: now,
+    };
+    this.sessions.set(code, session);
+    if (ownerUserId !== null) this.sessionsByOwner.set(ownerUserId, code);
+    this.store.flush(session);
+    return this.describeSession(session);
+  }
+
+  /** Убирает комнаты, к которым давно никто не обращался. */
+  sweep(now = Date.now()) {
+    for (const [code, session] of this.sessions) {
+      if (now - session.lastActivityAt <= ROOM_TTL_MS) continue;
+      this.sessions.delete(code);
+      if (session.ownerUserId !== null && this.sessionsByOwner.get(session.ownerUserId) === code) {
+        this.sessionsByOwner.delete(session.ownerUserId);
+      }
+      this.store.forget(code);
+    }
+  }
+
+  /** Только для тестов и диагностики. */
+  get roomCount() {
+    return this.sessions.size;
+  }
+
+  /** Без секретов ведущего: безопасная проекция для панели администрирования. */
+  listSessions() {
+    return [...this.sessions.values()].map((session) => ({
+      code: session.code,
+      ownerUserId: session.ownerUserId,
+      createdAt: session.createdAt,
+      lastActivityAt: session.lastActivityAt,
+      teamCount: session.game.teams.length,
+    }));
+  }
+
+  removeSession(code: string) {
+    const normalized = String(code ?? '').trim().toUpperCase();
+    const session = this.sessions.get(normalized);
+    if (!session) return false;
+    this.sessions.delete(normalized);
+    if (
+      session.ownerUserId !== null &&
+      this.sessionsByOwner.get(session.ownerUserId) === normalized
+    ) {
+      this.sessionsByOwner.delete(session.ownerUserId);
+    }
+    this.store.forget(normalized);
     return true;
   }
 
-  // --- Rounds ---
-
-  addRound(name: string): Round {
-    const round: Round = { id: randomUUID(), name, categories: [] };
-    this.state.rounds.push(round);
-    return round;
+  getHostState(code: string, hostToken: string): HostGameState | null {
+    const session = this.getSession(code);
+    if (!session || !tokensMatch(session.hostToken, hostToken)) return null;
+    return toHostState(this.touch(this.adopted(session)));
   }
 
-  updateRound(id: string, name: string): Round | null {
-    const round = this.state.rounds.find((r) => r.id === id);
-    if (!round) return null;
-    round.name = name;
-    return round;
+  getHostStateByJoinKey(code: string, hostJoinKey: string): HostGameState | null {
+    const session = this.getSession(code);
+    const supplied = String(hostJoinKey ?? '').trim().toUpperCase();
+    if (!session || supplied.length !== HOST_JOIN_KEY_LENGTH) return null;
+    this.adopted(session);
+    if (!tokensMatch(session.hostJoinKey, supplied)) return null;
+    return toHostState(this.touch(session));
   }
 
-  deleteRound(id: string): { success: boolean; error?: string } {
-    const round = this.state.rounds.find((r) => r.id === id);
-    if (!round) return { success: false, error: 'Round not found' };
-    if (this.state.activeRoundId === id)
-      return { success: false, error: 'Cannot delete active round' };
-    if (round.categories.some((c) => c.questions.some((q) => q.isOpened)))
-      return { success: false, error: 'Cannot delete round with opened questions' };
-    this.state.rounds = this.state.rounds.filter((r) => r.id !== id);
-    return { success: true };
+  /** Проекция для сокета, чьи права ведущего уже проверены. */
+  getHostStateForConnectedHost(code: string): HostGameState | null {
+    const session = this.getSession(code);
+    return session ? toHostState(session) : null;
   }
 
-  // --- Categories ---
-
-  addCategory(roundId: string, name: string): Category | null {
-    const round = this.state.rounds.find((r) => r.id === roundId);
-    if (!round) return null;
-    const category: Category = { id: randomUUID(), name, questions: [] };
-    round.categories.push(category);
-    return category;
+  getHostJoinKeyForConnectedHost(code: string) {
+    return this.getSession(code)?.hostJoinKey ?? null;
   }
 
-  updateCategory(
-    id: string,
-    name: string,
-  ): { success: boolean; error?: string; category?: Category } {
-    for (const round of this.state.rounds) {
-      const cat = round.categories.find((c) => c.id === id);
-      if (cat) {
-        cat.name = name;
-        return { success: true, category: cat };
-      }
+  getPublicState(code: string): PublicGameState | null {
+    const session = this.getSession(code);
+    return session ? toPublicState(session) : null;
+  }
+
+  getTeamIdByKey(code: string, joinKey: string) {
+    const session = this.getSession(code);
+    const supplied = String(joinKey ?? '').trim().toUpperCase();
+    if (!session || supplied.length !== TEAM_KEY_LENGTH) return null;
+    const teamId =
+      session.game.teams.find((team) => tokensMatch(team.joinKey, supplied))?.id ??
+      null;
+    if (teamId) this.touch(session);
+    return teamId;
+  }
+
+  runHostCommand(code: string, command: HostCommand): CommandResult {
+    const session = this.getSession(code);
+    if (!session) return { changed: false, error: 'Комната не найдена.' };
+    const tooHeavy = command.type === 'LOAD_DECK' && deckTooHeavy(command.deck);
+    if (tooHeavy) {
+      return {
+        changed: false,
+        error:
+          'Колода слишком тяжёлая. Загрузите картинки и звук файлами — ' +
+          'в колоде останутся ссылки, и она станет в разы легче.',
+      };
     }
-    return { success: false, error: 'Category not found' };
+    return this.run(session, command);
   }
 
-  deleteCategory(id: string): { success: boolean; error?: string } {
-    for (const round of this.state.rounds) {
-      const idx = round.categories.findIndex((c) => c.id === id);
-      if (idx !== -1) {
-        if (round.categories[idx].questions.some((q) => q.isOpened))
-          return { success: false, error: 'Category has opened questions and is immutable' };
-        round.categories.splice(idx, 1);
-        return { success: true };
-      }
+  runParticipantCommand(
+    code: string,
+    teamId: string,
+    command: ParticipantCommand,
+  ): CommandResult {
+    const session = this.getSession(code);
+    if (!session) return { changed: false, error: 'Комната не найдена.' };
+    const denial = denyParticipantCommand(session.game, teamId, command);
+    if (denial) return { changed: false, error: denial };
+    return this.run(session, toEngineCommand(command, teamId));
+  }
+
+  private run(session: GameSession, command: HostCommand): CommandResult {
+    const next = applyCommand(session.game, command, {
+      createTeamIdentity: () => createTeamIdentity(session),
+      now: Date.now(),
+    });
+    if (!next) {
+      return {
+        changed: false,
+        error: 'Действие сейчас недоступно или содержит неверные данные.',
+      };
     }
-    return { success: false, error: 'Category not found' };
+    session.game = next;
+    this.touch(session);
+    if (FLUSH_AFTER.has(command.type)) this.store.flush(session);
+    else this.store.save(session);
+    return { changed: true };
   }
 
-  // --- Questions ---
+  private getSession(code: string) {
+    return this.sessions.get(String(code ?? '').trim().toUpperCase());
+  }
 
-  addQuestion(
-    categoryId: string,
-    text: string,
-    answer: string,
-    points: number,
-    mediaUrl?: string,
-    mediaType?: 'image' | 'audio',
-    answerMediaUrl?: string,
-    answerMediaType?: 'image' | 'audio',
-  ): Question | null {
-    const cat = this.findCategory(categoryId);
-    if (!cat) return null;
-    const question: Question = {
-      id: randomUUID(),
-      text,
-      answer,
-      points,
-      isOpened: false,
-      winnerId: null,
-      mediaUrl,
-      mediaType,
-      answerMediaUrl,
-      answerMediaType,
+  private touch(session: GameSession) {
+    session.lastActivityAt = Date.now();
+    return session;
+  }
+
+  /**
+   * Достраивает ключи комнате, пришедшей из прошлой версии сервера. Зовётся
+   * только там, где комната появляется или подхватывается ведущим: чтение
+   * состояния менять его не должно, иначе каждая рассылка двигает ревизию.
+   */
+  private adopted(session: GameSession) {
+    ensureHostJoinKey(session);
+    ensureTeamKeys(session);
+    return session;
+  }
+
+  private describeSession(session: GameSession) {
+    return {
+      code: session.code,
+      hostToken: session.hostToken,
+      hostJoinKey: session.hostJoinKey,
+      state: toHostState(this.adopted(session)),
     };
-    cat.questions.push(question);
-    return question;
-  }
-
-  updateQuestion(
-    id: string,
-    updates: Partial<Pick<Question, 'text' | 'answer' | 'points'>> & {
-      mediaUrl?: string | null;
-      mediaType?: 'image' | 'audio' | null;
-      answerMediaUrl?: string | null;
-      answerMediaType?: 'image' | 'audio' | null;
-    },
-  ): { success: boolean; error?: string; question?: Question } {
-    const found = this.findQuestion(id);
-    if (!found) return { success: false, error: 'Question not found' };
-    if (found.question.isOpened)
-      return { success: false, error: 'Question is already opened and immutable' };
-    const { mediaUrl, mediaType, answerMediaUrl, answerMediaType, ...rest } = updates;
-    Object.assign(found.question, rest);
-    if ('mediaUrl' in updates) found.question.mediaUrl = mediaUrl ?? undefined;
-    if ('mediaType' in updates) found.question.mediaType = mediaType ?? undefined;
-    if ('answerMediaUrl' in updates) found.question.answerMediaUrl = answerMediaUrl ?? undefined;
-    if ('answerMediaType' in updates) found.question.answerMediaType = answerMediaType ?? undefined;
-    return { success: true, question: found.question };
-  }
-
-  deleteQuestion(id: string): { success: boolean; error?: string } {
-    for (const round of this.state.rounds) {
-      for (const cat of round.categories) {
-        const idx = cat.questions.findIndex((q) => q.id === id);
-        if (idx !== -1) {
-          if (cat.questions[idx].isOpened)
-            return { success: false, error: 'Question is already opened and immutable' };
-          cat.questions.splice(idx, 1);
-          return { success: true };
-        }
-      }
-    }
-    return { success: false, error: 'Question not found' };
-  }
-
-  // --- Game control ---
-
-  startRound(roundId: string): { success: boolean; error?: string } {
-    const round = this.state.rounds.find((r) => r.id === roundId);
-    if (!round) return { success: false, error: 'Round not found' };
-    this.state.activeRoundId = roundId;
-    this.state.activeQuestion = null;
-    this.state.phase = 'board';
-    return { success: true };
-  }
-
-  openQuestion(questionId: string): { success: boolean; error?: string } {
-    if (!this.state.activeRoundId)
-      return { success: false, error: 'No active round' };
-    const found = this.findQuestion(questionId);
-    if (!found) return { success: false, error: 'Question not found' };
-
-    const activeRound = this.state.rounds.find((r) => r.id === this.state.activeRoundId);
-    if (!activeRound?.categories.find((c) => c.id === found.category.id))
-      return { success: false, error: 'Question not in active round' };
-
-    if (found.question.isOpened) return { success: false, error: 'Question already opened' };
-
-    found.question.isOpened = true;
-    this.state.activeQuestion = {
-      questionId: found.question.id,
-      categoryId: found.category.id,
-      categoryName: found.category.name,
-      question: found.question.text,
-      answer: found.question.answer,
-      points: found.question.points,
-      currentAnswererId: null,
-      answeredTeamIds: [],
-      mediaUrl: found.question.mediaUrl,
-      mediaType: found.question.mediaType,
-      answerMediaUrl: found.question.answerMediaUrl,
-      answerMediaType: found.question.answerMediaType,
-    };
-    this.state.phase = 'question';
-    return { success: true };
-  }
-
-  buzz(teamId: string): { success: boolean; error?: string } {
-    if (this.state.phase !== 'question')
-      return { success: false, error: 'Not in question phase' };
-    if (!this.state.activeQuestion)
-      return { success: false, error: 'No active question' };
-    const team = this.state.teams.find((t) => t.id === teamId);
-    if (!team) return { success: false, error: 'Team not found' };
-    if (this.state.activeQuestion.answeredTeamIds.includes(teamId))
-      return { success: false, error: 'Team already answered' };
-    if (this.state.activeQuestion.currentAnswererId !== null)
-      return { success: false, error: 'Another team is already answering' };
-
-    this.state.activeQuestion.currentAnswererId = teamId;
-    this.state.phase = 'answering';
-    return { success: true };
-  }
-
-  judgeAnswer(correct: boolean): { success: boolean; error?: string } {
-    if (this.state.phase !== 'answering')
-      return { success: false, error: 'Not in answering phase' };
-    if (!this.state.activeQuestion)
-      return { success: false, error: 'No active question' };
-
-    const { currentAnswererId, questionId, points } = this.state.activeQuestion;
-    if (!currentAnswererId) return { success: false, error: 'No current answerer' };
-
-    if (correct) {
-      const team = this.state.teams.find((t) => t.id === currentAnswererId);
-      if (team) team.score += points;
-      const found = this.findQuestion(questionId);
-      if (found) found.question.winnerId = currentAnswererId;
-      this.state.activeQuestion = null;
-      this.state.phase = 'board';
-    } else {
-      this.state.activeQuestion.answeredTeamIds.push(currentAnswererId);
-      this.state.activeQuestion.currentAnswererId = null;
-
-      const remaining = this.state.teams.filter(
-        (t) => !this.state.activeQuestion!.answeredTeamIds.includes(t.id),
-      );
-      if (remaining.length === 0) {
-        this.state.activeQuestion = null;
-        this.state.phase = 'board';
-      } else {
-        this.state.phase = 'question';
-      }
-    }
-
-    return { success: true };
-  }
-
-  skipQuestion(): { success: boolean; error?: string } {
-    if (!this.state.activeQuestion)
-      return { success: false, error: 'No active question' };
-    this.state.activeQuestion = null;
-    this.state.phase = 'board';
-    return { success: true };
-  }
-
-  endRound(): void {
-    this.state.activeRoundId = null;
-    this.state.activeQuestion = null;
-    this.state.phase = 'lobby';
-  }
-
-  private findCategory(categoryId: string): Category | undefined {
-    for (const round of this.state.rounds) {
-      const cat = round.categories.find((c) => c.id === categoryId);
-      if (cat) return cat;
-    }
-    return undefined;
-  }
-
-  private findQuestion(questionId: string): { question: Question; category: Category } | null {
-    for (const round of this.state.rounds) {
-      for (const cat of round.categories) {
-        const q = cat.questions.find((q) => q.id === questionId);
-        if (q) return { question: q, category: cat };
-      }
-    }
-    return null;
-  }
-
-  // --- Captain sessions ---
-
-  registerCaptain(socketId: string, teamId: string): { success: boolean; error?: string } {
-    const team = this.state.teams.find((t) => t.id === teamId);
-    if (!team) return { success: false, error: 'Team not found' };
-    for (const [sid, tid] of this.captainSessions.entries()) {
-      if (tid === teamId && sid !== socketId)
-        return { success: false, error: 'Team already has a captain logged in' };
-    }
-    this.captainSessions.set(socketId, teamId);
-    return { success: true };
-  }
-
-  unregisterCaptain(socketId: string): void {
-    this.captainSessions.delete(socketId);
-  }
-
-  getCaptainTeamId(socketId: string): string | null {
-    return this.captainSessions.get(socketId) ?? null;
   }
 }
