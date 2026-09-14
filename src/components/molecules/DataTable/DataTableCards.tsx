@@ -35,7 +35,7 @@ function RowCard<T>({ row, columns }: { row: T; columns: DataTableColumn<T>[] })
   const details = columns.filter((column, index) => roleOf(column, index) === "detail");
 
   return (
-    <Card padding="sm">
+    <Card padding="sm" content="sm">
       <Stack gap="xs">
         {primary.map((column) => <div key={column.key} className="min-w-0 font-semibold">{column.render(row)}</div>)}
         {summary.map((column) => <Field key={column.key} column={column} row={row} />)}

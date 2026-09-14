@@ -31,6 +31,7 @@ import {
 } from "../../api/eventsApi";
 import { ApiError } from "../../api/http";
 import { showToast } from "../../utils/toast";
+import { cardRadius } from "../../styles/tokens";
 
 const labels: Record<RsvpStatus, string> = {
   going: "Иду",
@@ -253,7 +254,7 @@ const EventCard = ({ event, onChange }: {
   };
 
   return (
-    <Card padding="lg">
+    <Card padding="lg" content={cardRadius("md")}>
       <Stack gap="md">
         {event.canManage && !event.finalizedAt && (
           <Stack direction="row" justify="flex-end">

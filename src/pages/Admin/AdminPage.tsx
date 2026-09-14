@@ -13,6 +13,7 @@ import { ApiError } from "../../api/http";
 import { Button, Card, EmptyState, Heading, LoadingSpinner, Notice, Select, Stack, Text } from "../../components/atoms";
 import { PageContainer } from "../../components/templates";
 import { showToast } from "../../utils/toast";
+import { cardRadius } from "../../styles/tokens";
 
 const featureLabels: Record<FeatureKey, string> = {
   events: "Мероприятия",
@@ -147,7 +148,7 @@ const AdminPage = () => {
           </Stack>
         </Card>
 
-        <Card padding="md">
+        <Card padding="md" content={cardRadius("sm")}>
           <Stack gap="md">
             <Stack direction="row" align="center" justify="between" gap="sm" wrap>
               <div>

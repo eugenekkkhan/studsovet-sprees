@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { Badge, EmptyState, Heading, LoadingSpinner, Notice, Stack, Text } from "../../components/atoms";
 import { PageContainer } from "../../components/templates";
@@ -23,14 +23,39 @@ const RatingPage = () => {
   const [profiles, setProfiles] = useState<ReliabilityProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const loadingRef = useRef(false);
   const table = useTableState({ name: "rating", defaultSort });
 
-  useEffect(() => {
-    void fetchReliability()
-      .then((result) => setProfiles(result.profiles))
-      .catch((cause) => setError(cause instanceof ApiError ? cause.message : "Не удалось загрузить рейтинг."))
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const result = await fetchReliability();
+      setProfiles(result.profiles);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "Не удалось загрузить рейтинг.");
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void load();
+    const refresh = () => void load();
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, [load]);
 
   // Место — ранг по всему рейтингу, а не номер строки на экране: иначе фильтр
   // по факультету поднимал бы каждого в первую десятку.

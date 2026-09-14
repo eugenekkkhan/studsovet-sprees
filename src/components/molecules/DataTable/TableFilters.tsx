@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { TbBookmark, TbFilter, TbX } from "react-icons/tb";
+import { DropdownMenu } from "radix-ui";
+import { TbBookmark, TbFilter, TbPlus, TbX } from "react-icons/tb";
 import { Button, Card, IconButton, Input, Select, Stack, Text } from "../../atoms";
 import type { DataTableColumn } from "./DataTable";
 import type { TableView } from "../../../hooks/useTableState";
@@ -38,31 +39,28 @@ function FilterControl<T>({ label, filter, value, onChange }: {
     const current = value?.kind === "select" ? value.value : "";
     return <Select value={current} aria-label={label} onChange={(event) =>
       onChange(event.target.value ? { kind: "select", value: event.target.value } : undefined)}>
-      <option value="">{label}: любой</option>
+      <option value="">любой</option>
       {filter.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </Select>;
   }
 
   if (filter.kind === "multiselect") {
     const current = value?.kind === "multiselect" ? value.values : [];
-    return <fieldset className="min-w-0 ui-surface border border-border p-xs">
-      <legend className="px-2xs text-xs text-muted-foreground">{label}</legend>
-      <div className="flex max-h-[120px] flex-wrap gap-x-sm gap-y-2xs overflow-y-auto scroll-panel">
-        {filter.options.map((option) => <label key={option.value} className="flex items-center gap-2xs text-sm">
-          <input
-            type="checkbox"
-            checked={current.includes(option.value)}
-            onChange={(event) => {
-              const next = event.target.checked
-                ? [...current, option.value]
-                : current.filter((item) => item !== option.value);
-              onChange(next.length ? { kind: "multiselect", values: next } : undefined);
-            }}
-          />
-          <span className="truncate">{option.label}</span>
-        </label>)}
-      </div>
-    </fieldset>;
+    return <div className="ui-surface flex max-h-[128px] flex-wrap gap-x-sm gap-y-2xs overflow-y-auto border border-border p-xs scroll-panel">
+      {filter.options.map((option) => <label key={option.value} className="flex items-center gap-2xs text-sm">
+        <input
+          type="checkbox"
+          checked={current.includes(option.value)}
+          onChange={(event) => {
+            const next = event.target.checked
+              ? [...current, option.value]
+              : current.filter((item) => item !== option.value);
+            onChange(next.length ? { kind: "multiselect", values: next } : undefined);
+          }}
+        />
+        <span className="truncate">{option.label}</span>
+      </label>)}
+    </div>;
   }
 
   if (filter.kind === "range") {
@@ -70,9 +68,10 @@ function FilterControl<T>({ label, filter, value, onChange }: {
     const update = (min: number | null, max: number | null) =>
       onChange(min === null && max === null ? undefined : { kind: "range", min, max });
     return <Stack direction="row" gap="2xs" align="center">
-      <Input type="number" inputMode="numeric" aria-label={`${label}: от`} placeholder={`${label} от`} value={current.min ?? ""} onChange={(event) => update(numberOrNull(event.target.value), current.max)} />
+      <Input type="number" inputMode="numeric" aria-label={`${label}: от`} placeholder="от" value={current.min ?? ""} onChange={(event) => update(numberOrNull(event.target.value), current.max)} />
       <Text tone="muted">–</Text>
       <Input type="number" inputMode="numeric" aria-label={`${label}: до`} placeholder="до" value={current.max ?? ""} onChange={(event) => update(current.min, numberOrNull(event.target.value))} />
+      {filter.unit && <Text size="sm" tone="muted" className="whitespace-nowrap">{filter.unit}</Text>}
     </Stack>;
   }
 
@@ -90,17 +89,19 @@ function FilterControl<T>({ label, filter, value, onChange }: {
   const current = value?.kind === "boolean" ? value.value : "";
   return <Select value={current} aria-label={label} onChange={(event) =>
     onChange(event.target.value ? { kind: "boolean", value: event.target.value as "yes" | "no" } : undefined)}>
-    <option value="">{label}: неважно</option>
+    <option value="">неважно</option>
     <option value="yes">{filter.yes}</option>
     <option value="no">{filter.no}</option>
   </Select>;
 }
 
 /**
- * Панель отбора: поиск, контролы из описаний колонок и ряд чипов с тем, что
- * сейчас включено. Чипы нужны именно в свёрнутом виде — до них о фильтрах
- * говорило одно число, и чтобы узнать, что отсекает половину списка, панель
- * приходилось разворачивать.
+ * Панель отбора. Фильтры добавляются по одному из меню, а не выкладываются
+ * все сразу: полтора десятка контролов, из которых нужен один, — это стена,
+ * сквозь которую не видно самой таблицы.
+ *
+ * Свёрнутая панель показывает ряд чипов: до них о том, что отсекает половину
+ * списка, говорило одно число.
  */
 export function TableFilters<T>({
   columns, values, onChange, search, onSearch, searchPlaceholder,
@@ -108,12 +109,30 @@ export function TableFilters<T>({
   views, onSaveView, onApplyView, onRemoveView,
 }: TableFiltersProps<T>) {
   const [viewName, setViewName] = useState("");
+  // Добавленный фильтр остаётся на экране, даже пока пустой; фильтр со
+  // значением показывается сам — иначе пришедший по ссылке отбор был бы скрыт.
+  const [added, setAdded] = useState<string[]>([]);
+
   const filterable = columns.filter((column) => column.filter);
+  const isOpen = (key: string) => added.includes(key) || isFilterActive(values[key]);
+  const open = filterable.filter((column) => isOpen(column.key));
+  const closed = filterable.filter((column) => !isOpen(column.key));
   const count = activeFilters(values) + (search.trim() ? 1 : 0);
+
   const set = (key: string, next: FilterValue | undefined) => {
     const copy = { ...values };
     if (next) copy[key] = next; else delete copy[key];
     onChange(copy);
+  };
+
+  const drop = (key: string) => {
+    setAdded((current) => current.filter((item) => item !== key));
+    set(key, undefined);
+  };
+
+  const reset = () => {
+    setAdded([]);
+    onReset();
   };
 
   return (
@@ -125,40 +144,66 @@ export function TableFilters<T>({
             <Text size="sm" tone="muted" className="tabular-nums">Найдено {shown} из {total}</Text>
           </Stack>
           <Stack direction="row" gap="xs">
-            {count > 0 && <Button size="sm" variant="ghost" onClick={onReset}>Сбросить</Button>}
+            {count > 0 && <Button size="sm" variant="ghost" onClick={reset}>Сбросить</Button>}
             <Button size="sm" variant="neutral" onClick={() => onCollapsed(!collapsed)}>
-              <TbFilter aria-hidden /> {collapsed ? "Показать" : "Свернуть"}
+              <TbFilter aria-hidden /> {collapsed ? `Показать${count ? ` · ${count}` : ""}` : "Свернуть"}
             </Button>
           </Stack>
         </Stack>
 
-        {count > 0 && <Stack direction="row" gap="2xs" align="center" wrap>
-          {search.trim() && <Stack direction="row" gap="2xs" align="center" className="rounded-pill bg-surface-muted px-sm py-2xs text-sm">
+        {/* В развёрнутом виде то же самое видно по самим контролам. */}
+        {collapsed && count > 0 && <Stack direction="row" gap="2xs" align="center" wrap>
+          {search.trim() && <Stack direction="row" gap="2xs" align="center" className="ui-surface bg-surface-muted py-2xs pr-2xs pl-sm text-sm">
             <span>Поиск: {search.trim()}</span>
             <IconButton size="sm" label="Очистить поиск" onClick={() => onSearch("")}><TbX aria-hidden /></IconButton>
           </Stack>}
           {filterable.map((column) => {
             const value = values[column.key];
             if (!isFilterActive(value)) return null;
-            return <Stack key={column.key} direction="row" gap="2xs" align="center" className="rounded-pill bg-surface-muted px-sm py-2xs text-sm">
+            return <Stack key={column.key} direction="row" gap="2xs" align="center" className="ui-surface bg-surface-muted py-2xs pr-2xs pl-sm text-sm">
               <span className="truncate">{column.label}: {describeFilter(column.filter as ColumnFilter<T>, value)}</span>
-              <IconButton size="sm" label={`Убрать фильтр «${column.label}»`} onClick={() => set(column.key, undefined)}><TbX aria-hidden /></IconButton>
+              <IconButton size="sm" label={`Убрать фильтр «${column.label}»`} onClick={() => drop(column.key)}><TbX aria-hidden /></IconButton>
             </Stack>;
           })}
         </Stack>}
 
         {!collapsed && <>
           <Input type="search" value={search} placeholder={searchPlaceholder} aria-label={searchPlaceholder} onChange={(event) => onSearch(event.target.value)} />
-          {filterable.length > 0 && <div className="grid gap-sm md:grid-cols-2">
-            {filterable.map((column) => <FilterControl
-              key={column.key}
-              label={column.label}
-              filter={column.filter as ColumnFilter<T>}
-              value={values[column.key]}
-              onChange={(next) => set(column.key, next)}
-            />)}
+
+          {open.length > 0 && <div className="grid gap-sm md:grid-cols-2">
+            {open.map((column) => <Stack key={column.key} gap="2xs">
+              <Stack direction="row" align="center" justify="between" gap="2xs">
+                <Text size="sm" tone="muted">{column.label}</Text>
+                <IconButton size="sm" label={`Убрать фильтр «${column.label}»`} onClick={() => drop(column.key)}><TbX aria-hidden /></IconButton>
+              </Stack>
+              <FilterControl
+                label={column.label}
+                filter={column.filter as ColumnFilter<T>}
+                value={values[column.key]}
+                onChange={(next) => set(column.key, next)}
+              />
+            </Stack>)}
           </div>}
+
+          {closed.length > 0 && <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button size="sm" variant="dashed"><TbPlus aria-hidden /> Фильтр</Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content align="start" sideOffset={8} className="z-30">
+                <Card padding="xs" content="sm" className="max-h-[50vh] w-[260px] overflow-y-auto shadow-xl scroll-panel">
+                  <Stack gap="2xs">
+                    {closed.map((column) => <DropdownMenu.Item key={column.key} asChild onSelect={() => setAdded((current) => [...current, column.key])}>
+                      <Button size="sm" variant="ghost" block className="justify-start">{column.label}</Button>
+                    </DropdownMenu.Item>)}
+                  </Stack>
+                </Card>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>}
+
           {sortRow}
+
           <Stack direction="row" gap="2xs" align="center" wrap>
             <TbBookmark className="text-muted-foreground" aria-hidden />
             <Text size="sm" tone="muted">Наборы:</Text>

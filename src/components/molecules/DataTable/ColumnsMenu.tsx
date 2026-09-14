@@ -76,7 +76,7 @@ export function ColumnsMenu<T>({
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={8} className="z-30" aria-label="Показ и порядок колонок">
-          <Card padding="sm" className="max-h-[60vh] w-[340px] max-w-[calc(100vw-2rem)] overflow-y-auto shadow-xl scroll-panel">
+          <Card padding="sm" content="sm" className="max-h-[60vh] w-[340px] max-w-[calc(100vw-2rem)] overflow-y-auto shadow-xl scroll-panel">
             <Stack gap="xs">
               <Text size="sm" weight={700}>Показ и порядок колонок</Text>
               <SortableList items={columns.map((column) => column.key)} gap="2xs" onReorder={onReorder}>

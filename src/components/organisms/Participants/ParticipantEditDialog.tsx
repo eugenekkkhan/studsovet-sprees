@@ -42,7 +42,7 @@ const ParticipantEditDialog = ({ participant, onClose, onSave }: ParticipantEdit
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-text/40" />
         <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-[min(480px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 focus:outline-none">
-          <Card padding="lg" radius="var(--radius-2xl)" className="max-h-[85vh] overflow-y-auto scroll-panel">
+          <Card padding="lg" content="md" className="max-h-[85vh] overflow-y-auto scroll-panel">
             {draft && <Stack gap="md">
               <Stack direction="row" align="center" justify="between" gap="sm">
                 <Dialog.Title asChild><Heading level={2}>Профиль участника</Heading></Dialog.Title>

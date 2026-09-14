@@ -232,7 +232,7 @@ export function DataTable<T>({ name, label, rows, columns, rowKey, sort, onSort,
         <Button size="sm" variant="neutral" title="Выгрузить видимые колонки в CSV" onClick={exportCsv}>CSV</Button>
       </Stack>
     </Card>
-    <Card padding="none" className="overflow-hidden">
+    <Card padding="none" clip>
       <div className={narrow ? "" : "max-h-[70vh] overflow-auto"}>
         {/* border-separate, а не collapse: при collapse рамка принадлежит
             таблице, а не ячейке, и нижняя граница липкой шапки уезжает вместе
