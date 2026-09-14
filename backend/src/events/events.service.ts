@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  type OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import { randomInt, randomUUID } from 'node:crypto';
@@ -29,13 +30,26 @@ export interface EventReminder {
 }
 
 @Injectable()
-export class EventsService {
+export class EventsService implements OnModuleInit {
   private readonly store = new JsonStore<EventsFile>('events.json', () => ({
     events: [],
   }));
   private readonly reliability = new ReliabilityStore();
 
   constructor(@Optional() private readonly rating?: RatingService) {}
+
+  /**
+   * Старые мероприятия могли быть завершены до появления score_entries.
+   * Повторный проход безопасен: у начисления уникальный ключ event/user.
+   */
+  async onModuleInit() {
+    if (!this.rating) return;
+    for (const event of this.store.read().events) {
+      if (event.status === 'completed' || event.finalizedAt) {
+        await this.rating.award(event);
+      }
+    }
+  }
 
   canCreate(user: SessionUser) {
     return user.kind === 'dev' || env.adminIds.includes(user.id);

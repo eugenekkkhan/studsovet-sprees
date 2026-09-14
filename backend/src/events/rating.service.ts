@@ -22,12 +22,16 @@ export class RatingService {
     if (!this.database.enabled) return;
     const urgency = urgencyMultiplier(event);
     const duration = event.durationMinutes ?? 120;
+    // События, созданные до появления категорий, остаются валидными при
+    // восстановительном начислении. В БД пишем нормализованное значение, а не
+    // исходный undefined в NOT NULL колонку.
+    const category = event.category ?? 'other';
     for (const person of event.attendance ?? []) {
       const profile = await this.database.query<{ course: number | null }>(
         'SELECT course FROM participants WHERE user_id = $1', [person.userId],
       );
       const course = courseMultiplier(profile.rows[0]?.course ?? null);
-      const base = RATE[event.category ?? 'other'] * (duration / 60);
+      const base = RATE[category] * (duration / 60);
       const points = Math.round(base * urgency * course);
       await this.database.query(
         `INSERT INTO score_entries
@@ -35,7 +39,7 @@ export class RatingService {
            urgency_multiplier, course_multiplier, points)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (event_id, user_id) DO NOTHING`,
-        [event.id, person.userId, event.title, event.category, duration, base, urgency, course, points],
+        [event.id, person.userId, event.title, category, duration, base, urgency, course, points],
       );
     }
   }

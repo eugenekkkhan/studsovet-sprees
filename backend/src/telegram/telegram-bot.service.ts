@@ -120,12 +120,24 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       }
 
       for (const update of updates) {
-        this.offset = Math.max(this.offset, update.update_id + 1);
-        try {
-          await this.handle(update);
-        } catch (error) {
-          this.logger.warn(`Не смогли обработать обновление: ${String(error)}`);
+        let handled = false;
+        for (let attempt = 1; attempt <= 3 && !handled; attempt += 1) {
+          try {
+            await this.handle(update);
+            handled = true;
+          } catch (error) {
+            this.logger.warn(
+              `Не смогли обработать update ${update.update_id}, попытка ${attempt}/3: ${String(error)}`,
+            );
+            if (attempt < 3) await this.pause(500 * attempt);
+          }
         }
+        // Offset двигается только после обработки или трёх явно
+        // зафиксированных неудач. Одиночный сбой БД больше не теряет update.
+        if (!handled) {
+          this.logger.error(`Update ${update.update_id} пропущен после трёх попыток.`);
+        }
+        this.offset = Math.max(this.offset, update.update_id + 1);
       }
     }
   }

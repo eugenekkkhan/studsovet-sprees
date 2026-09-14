@@ -147,17 +147,17 @@ export class ActivityService {
       );
       await client.query(
         `INSERT INTO activity_daily (user_id, activity_date, reactions_given)
-         VALUES ($1, (to_timestamp($2) AT TIME ZONE 'Europe/Moscow')::date, $3)
+         VALUES ($1, (to_timestamp($2) AT TIME ZONE 'Europe/Moscow')::date, GREATEST(0, $3))
          ON CONFLICT (user_id, activity_date) DO UPDATE SET
-           reactions_given = GREATEST(0, activity_daily.reactions_given + EXCLUDED.reactions_given)`,
+           reactions_given = GREATEST(0, activity_daily.reactions_given + $3)`,
         [actor.id, changedAt, delta],
       );
       if (recipientId !== null) {
         await client.query(
           `INSERT INTO activity_daily (user_id, activity_date, reactions_received)
-           VALUES ($1, (to_timestamp($2) AT TIME ZONE 'Europe/Moscow')::date, $3)
+           VALUES ($1, (to_timestamp($2) AT TIME ZONE 'Europe/Moscow')::date, GREATEST(0, $3))
            ON CONFLICT (user_id, activity_date) DO UPDATE SET
-             reactions_received = GREATEST(0, activity_daily.reactions_received + EXCLUDED.reactions_received)`,
+             reactions_received = GREATEST(0, activity_daily.reactions_received + $3)`,
           [recipientId, changedAt, delta],
         );
       }
