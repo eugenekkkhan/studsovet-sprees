@@ -1,110 +1,226 @@
-:root {
-  font-family: "Golos Text", system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/tokens.css";
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  html {
+    /* Always reserve the scrollbar so growing content never nudges the page sideways. */
+    scrollbar-gutter: stable;
+  }
+
+  :root {
+    font-family: var(--font-body);
+    line-height: 1.5;
+    font-weight: 400;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    display: flex;
+    /* flex-start, not center: centering re-flows the whole page whenever
+       content grows or shrinks. */
+    align-items: flex-start;
+    min-width: 320px;
+    min-height: 100vh;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-weight: 500;
+    font-family: var(--font-display);
+  }
+
+  h1 {
+    font-size: 3.2em;
+    line-height: 1.1;
+  }
+
+  a {
+    font-weight: 400;
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: #747bff;
+  }
+
+  p,
+  a,
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    padding: 0;
+  }
+
+  #root {
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    /* Top padding clears the fixed header so nothing has to shift around it. */
+    padding: calc(var(--header-height) + var(--spacing-md)) var(--spacing-2xl)
+      var(--spacing-2xl);
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  body:has(.field-player-page) #root,
+  body:has(.field-remote-host-page) #root,
+  body:has(.quiz-player-page) #root,
+  body:has(.quiz-remote-host-page) #root {
+    max-width: none;
+    padding: var(--spacing-md);
+  }
+
+  body:has(.quiz-board-page) #root {
+    max-width: none;
+    padding: 0;
+  }
+
+  /* Таблице нужна вся ширина: её собственная — около 1900px, и на общей
+     колонке в 1280 она скроллилась бы вбок даже на широком мониторе. */
+  body:has(.table-page) #root {
+    max-width: none;
+  }
+
+  /* Экран входа шапки не имеет, так что место под неё оставлять не надо. */
+  body:has(.auth-screen) #root {
+    padding-top: var(--spacing-md);
+  }
+
+  @media (max-width: 640px) {
+    /* На телефоне PageContainer раньше складывал свои 24px с 32px у root.
+       Оставляем один gutter: таблицам и длинным именам нужна ширина. */
+    #root {
+      padding-right: var(--spacing-xs);
+      padding-bottom: var(--spacing-md);
+      padding-left: var(--spacing-xs);
+    }
+
+    .page-container {
+      padding-right: 0 !important;
+      padding-left: 0 !important;
+    }
+
+    body:has(.field-player-page) #root,
+    body:has(.field-remote-host-page) #root,
+    body:has(.quiz-player-page) #root,
+    body:has(.quiz-remote-host-page) #root {
+      padding: var(--spacing-xs);
+    }
+  }
 }
 
-h1,
-h2,
-h3 {
-  font-weight: 500;
-  font-family: "Unbounded", system-ui, Avenir, Helvetica, Arial, sans-serif;
+@layer components {
+  /* Concentric corners.
+     A container's radius is its padding plus the radius of whatever touches
+     its corners, so a child inset by that padding keeps the same corner centre
+     as the container around it. Controls seed the rule rather than obey it:
+     every one of them is a pill of fixed height, so its radius is a constant
+     (--radius-control-*) and the cards are built outwards from it. Nothing
+     here re-rounds a control — a control that cannot draw the corner asked of
+     it is wrapped in <Inset>, which supplies the difference as padding.
+
+     What is left for CSS is the surfaces that have no intrinsic radius of
+     their own and simply take the corner they are given. */
+  .ui-surface {
+    border-radius: var(--card-inner-radius, var(--radius-control-md));
+  }
+
+  /* Прокрутка внутри панели, а не всей страницы: узкая дорожка и «таблетка»
+     в цвет рамок — системная полоса рядом с закруглённой карточкой выглядит
+     чужеродно. Ось прокрутки задаёт сам элемент (overflow-y / overflow-x). */
+  .scroll-panel {
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  .scroll-panel::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scroll-panel::-webkit-scrollbar-thumb {
+    /* Прозрачная рамка + background-clip дают поля вокруг ползунка. */
+    background-color: var(--color-border);
+    background-clip: content-box;
+    border: 2px solid transparent;
+    border-radius: var(--radius-pill);
+  }
+
+  /* Классическая полоса прокрутки занимает место в потоке, и содержимое
+     оказывается ближе к правой стенке, чем к левой. Жёлоб с обеих сторон
+     уравнивает поля — и не даёт им прыгать, когда прокрутка исчезает. */
+  .scroll-panel-even {
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .scroll-panel:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-strong);
+  }
+
+  .scroll-panel::-webkit-scrollbar-thumb:active {
+    background-color: var(--color-primary);
+  }
 }
 
-a {
-  font-weight: 400;
-  text-decoration: none;
-}
-a:hover {
-  color: #535bf2;
-}
+@layer components {
+  /* Всплытие вопроса и ответа над табло: карточка приподнимается снизу,
+     подложка проявляется отдельно — так глаз успевает за сменой сцены. */
+  @keyframes stage-rise {
+    from {
+      opacity: 0;
+      transform: translateY(28px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
+  @keyframes stage-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
+  .stage-overlay {
+    animation: stage-fade 0.18s ease-out both;
+  }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 400;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-button:hover {
-  opacity: 0.85;
-}
+  .stage-card {
+    animation: stage-rise 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+  }
 
-.round-button {
-  all: unset;
-  color: black;
-  border: 1px solid #ccc;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  cursor: pointer;
-}
+  /* Ответ всплывает уже поверх открытого вопроса, чуть позже. */
+  .stage-answer {
+    animation: stage-rise 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+    animation-delay: 0.06s;
+  }
 
-input {
-  border: 1px solid #646cff;
-  border-radius: 8px;
-  padding: 0.6em 0.6em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.25s;
-}
-
-:root {
-  color: #081520;
-  background-color: #ffffff;
-}
-a:hover {
-  color: #747bff;
-}
-button {
-  background-color: #f9f9f9;
-}
-
-input[type="color"]::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-input[type="color"]::-webkit-color-swatch {
-  border: none;
-}
-
-/* firefox */
-input[type="color"]::-moz-focus-inner {
-  border: none;
-  padding: 0;
-}
-
-input[type="color"]::-moz-color-swatch {
-  border: none;
+  @media (prefers-reduced-motion: reduce) {
+    .stage-overlay,
+    .stage-card,
+    .stage-answer {
+      animation: none;
+    }
+  }
 }

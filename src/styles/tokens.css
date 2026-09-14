@@ -1,0 +1,177 @@
+/* Design tokens — the single source of truth for colours, radii and type.
+   Wrapped in `@theme` so Tailwind v4 turns every key into a utility class
+   (bg-primary, gap-sm, rounded-pill, font-display, …) while still emitting
+   them as plain :root custom properties for the TS wrapper (tokens.ts) and
+   any dynamic inline style that needs a raw var(). */
+
+@theme {
+  /* brand */
+  --color-primary: #2563eb;
+  --color-primary-strong: #1e40af;
+  --color-primary-soft: #eff6ff;
+  --color-primary-border: #bfdbfe;
+  --color-primary-muted: #93c5fd;
+  --color-primary-foreground: #ffffff;
+  /* Фирменный цвет как текст — на белой подложке это он сам, на тёмной теме
+     Telegram он же, но осветлённый (см. html[data-telegram-theme="dark"]). */
+  --color-primary-ink: var(--color-primary);
+
+  /* status */
+  --color-success: #4b823e; /* 2.43:1 -> 4.60:1 with white text */
+  --color-success-soft: #dcfce7;
+  --color-success-strong: #166534;
+  --color-success-foreground: #ffffff;
+  --color-danger: #ca4b4b; /* 4.46:1 -> 4.55:1 with white text */
+  --color-danger-soft: #fff5f5;
+  --color-danger-tint: #fee2e2;
+  --color-danger-strong: #991b1b;
+  --color-danger-foreground: #ffffff;
+  --color-warning-soft: #fff3cd;
+  --color-warning-strong: #856404;
+
+  /* neutrals */
+  --color-neutral: #6b7280;
+  --color-neutral-foreground: #ffffff;
+  --color-text: #081520;
+  --color-text-muted: #6d7787; /* 2.54:1 -> 4.53:1 on white */
+  --color-border: #e5e7eb;
+  --color-border-subtle: #f3f4f6;
+  --color-border-strong: #d1d5db;
+
+  /* surfaces */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f9fafb;
+  /* Ховер строки таблицы. На белом фоне muted (gray-50) практически не виден,
+     поэтому берётся следующая ступень той же серой шкалы. */
+  --color-surface-hover: #f3f4f6;
+  --color-surface-alt: #fafafa;
+  --color-surface-tint: #f8faff;
+
+  /* shadcn/ui semantic slots — aliased onto the palette above so generated
+     shadcn components (button, card, input, …) pick up this app's look
+     without a second colour system. */
+  --color-background: var(--color-surface);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-text);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-text);
+  --color-secondary: var(--color-surface-muted);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted: var(--color-surface-muted);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-accent: var(--color-primary-soft);
+  --color-accent-foreground: var(--color-primary);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: #ffffff;
+  --color-input: var(--color-border);
+  --color-ring: var(--color-primary);
+
+  /* spacing — one 4px-based scale for every gap, padding and margin.
+     The `--spacing-*` namespace is what Tailwind reads to generate
+     p-sm / gap-md / px-lg / etc. */
+  --spacing-2xs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 20px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  --spacing-3xl: 48px;
+  --spacing-4xl: 64px;
+
+  /* radii */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-pill: 999px;
+
+  /* Control radii — the seed of the concentric-corner rule.
+     Every control is a pill, so its radius is exactly half its height; the
+     heights below are fixed for that reason. Containers are then derived
+     outwards (radius = padding + content radius), never the other way round,
+     which is why these three numbers are the only ones authored by hand. */
+  --radius-control-sm: 14px; /* half of --control-height-sm */
+  --radius-control-md: 20px; /* half of --control-height-md */
+  --radius-control-lg: 24px; /* half of --control-height-lg */
+
+  /* typography */
+  --font-display: "Unbounded", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-body: "Golos Text", system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+:root {
+  /* layout — fixed chrome sizes; not part of any Tailwind theme namespace,
+     read through var() (see PageContainer, Header, QuizNav). */
+  --header-height: 72px;
+  --quiz-nav-height: 56px;
+
+  /* Толщина рамки карточки. Она нужна не только самой карточке: обрезка
+     (overflow) идёт по padding-box, поэтому кривая, по которой режутся дети,
+     на эту величину меньше радиуса карточки. Всё, что должно лечь ровно в
+     угол, считает свой радиус от неё. */
+  --card-border-width: 1.5px;
+
+  /* Control heights. Fixed on purpose: a pill's radius is half its height,
+     and that radius is what every enclosing card's radius is built from.
+     Change one of these and you must change its --radius-control-* twin. */
+  --control-height-sm: 28px;
+  --control-height-md: 40px;
+  --control-height-lg: 48px;
+
+  /* the wheel's lift off the page; applied as a CSS filter, so it follows
+     the circle rather than boxing it the way box-shadow would */
+  --shadow-wheel: drop-shadow(0 3px 10px rgb(8 21 32 / 0.10));
+}
+
+/* Telegram Mini App palette. The bridge exposes the user's current colours
+   through --tg-theme-*; semantic app tokens keep components theme-agnostic. */
+html[data-telegram="true"] {
+  color-scheme: light;
+  --color-primary: var(--tg-theme-button-color, #2563eb);
+  --color-primary-strong: var(--tg-theme-link-color, var(--color-primary));
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  --color-primary-border: color-mix(in srgb, var(--color-primary) 32%, var(--color-surface));
+  --color-primary-muted: color-mix(in srgb, var(--color-primary) 55%, var(--color-surface));
+  --color-primary-foreground: var(--tg-theme-button-text-color, #ffffff);
+
+  --color-text: var(--tg-theme-text-color, #081520);
+  --color-text-muted: var(--tg-theme-hint-color, var(--tg-theme-subtitle-text-color, #6d7787));
+  --color-neutral: var(--color-text-muted);
+  --color-border: var(--tg-theme-section-separator-color, color-mix(in srgb, var(--color-text) 14%, transparent));
+  --color-border-subtle: color-mix(in srgb, var(--color-text) 8%, transparent);
+  --color-border-strong: color-mix(in srgb, var(--color-text) 24%, transparent);
+
+  --color-surface: var(--tg-theme-bg-color, #ffffff);
+  --color-surface-muted: var(--tg-theme-secondary-bg-color, var(--color-surface));
+  --color-surface-alt: var(--tg-theme-section-bg-color, var(--color-surface-muted));
+  --color-surface-tint: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+  --color-danger: var(--tg-theme-destructive-text-color, #ca4b4b);
+  --color-danger-strong: var(--tg-theme-destructive-text-color, #991b1b);
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  --color-danger-tint: color-mix(in srgb, var(--color-danger) 14%, var(--color-surface));
+}
+
+html[data-telegram-theme="dark"] {
+  color-scheme: dark;
+  /* Кнопочный цвет клиента задуман под белый текст на нём. Как текст на
+     тёмной подложке он читается плохо, поэтому для надписей осветляем его. */
+  --color-primary-ink: color-mix(in srgb, var(--color-primary) 45%, #ffffff);
+  --color-primary-strong: var(--color-primary-ink);
+  /* Красный Telegram на чёрном даёт 4:1 — добавляем белого до нормы. */
+  --color-danger: color-mix(
+    in srgb,
+    var(--tg-theme-destructive-text-color, #ca4b4b) 75%,
+    #ffffff
+  );
+  --color-danger-strong: var(--color-danger);
+  --color-success: #6ab04c;
+  --color-success-foreground: #081520;
+  --color-success-strong: #9ddb84;
+  --color-success-soft: color-mix(in srgb, #6ab04c 18%, var(--color-surface));
+  --color-warning-strong: #ffd166;
+  --color-warning-soft: color-mix(in srgb, #ffd166 16%, var(--color-surface));
+}
