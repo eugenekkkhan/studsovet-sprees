@@ -22,3 +22,32 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Загруженные ведущим файлы
+backend/uploads
+
+# Колоды пользователей и список чатов с ботом
+backend/data
+
+# Локальные настройки
+.env
+.env.local
+backend/.env
+
+# Telegram-выгрузка (сессия и креды — не коммитить)
+tools/tg-members/*.session
+tools/tg-members/*.session-journal
+tools/tg-members/.env
+tools/tg-members/out/
+tools/tg-members/venv/
+
+# Презентации и прочие тяжёлые исходники материалов
+*.pptx
+
+# Артефакты UI-аудита (скрипт cdp-audit.mjs остаётся в репозитории)
+ui-audit/*.png
+ui-audit/*.json
+
+# Python
+__pycache__/
+*.py[cod]
