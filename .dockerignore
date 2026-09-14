@@ -1,0 +1,14 @@
+.git
+.agents
+.codex
+node_modules
+backend/node_modules
+backend/data
+backend/uploads
+backend/.env
+dist
+backend/dist
+ui-audit
+samples
+*.pptx
+*.log

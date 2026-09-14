@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+backend/node_modules
+dist
+backend/dist
+.env
+.env.local
+backend/.env
+deploy/.env
+deploy/data
+deploy/uploads
+.releases
+tools/tg-members/out
+tools/tg-members/venv
+*.session
+*.session-journal

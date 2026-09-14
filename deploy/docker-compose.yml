@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sprees
+      POSTGRES_USER: sprees
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sprees -d sprees"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+      STATIC_DIR: /app/dist
+      DATA_DIR: /app/backend/data
+      MEDIA_DIR: /app/backend/uploads
+      FRONTEND_ORIGIN: https://test.traapp.ru
+      DATABASE_URL: postgresql://sprees:${POSTGRES_PASSWORD}@postgres:5432/sprees
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/backend/data
+      - ./uploads:/app/backend/uploads
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
