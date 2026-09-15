@@ -31,6 +31,35 @@ export class AdminController {
     return this.admin.removeAdmin(user, Number(id));
   }
 
+  @Get('roles')
+  roles(@CurrentUser() user: SessionUser) {
+    return this.admin.roles(user);
+  }
+
+  @Post('role-assignments')
+  assignRole(
+    @CurrentUser() user: SessionUser,
+    @Body() body: {
+      userId?: unknown;
+      roleKey?: unknown;
+      scopeType?: unknown;
+      scopeId?: unknown;
+      expiresAt?: unknown;
+    },
+  ) {
+    return this.admin.assignRole(user, body ?? {});
+  }
+
+  @Delete('role-assignments/:id')
+  revokeRole(@CurrentUser() user: SessionUser, @Param('id') id: string) {
+    return this.admin.revokeRole(user, Number(id));
+  }
+
+  @Get('audit')
+  audit(@CurrentUser() user: SessionUser) {
+    return this.admin.auditLog(user);
+  }
+
   @Delete('sessions/:game/:code')
   terminateSession(
     @CurrentUser() user: SessionUser,

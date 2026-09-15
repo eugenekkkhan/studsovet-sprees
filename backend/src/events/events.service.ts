@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { SessionUser } from '../auth/types';
-import { env } from '../env';
+import { AuthorizationService } from '../authorization/authorization.service';
 import { JsonStore } from '../storage/json-store';
 import type { CommunityEvent, ReminderRule, RsvpStatus } from './types';
 import { ReliabilityStore } from './reliability-store';
@@ -36,7 +36,10 @@ export class EventsService implements OnModuleInit {
   }));
   private readonly reliability = new ReliabilityStore();
 
-  constructor(@Optional() private readonly rating?: RatingService) {}
+  constructor(
+    @Optional() private readonly rating?: RatingService,
+    private readonly authorization?: AuthorizationService,
+  ) {}
 
   /**
    * Старые мероприятия могли быть завершены до появления score_entries.
@@ -51,32 +54,36 @@ export class EventsService implements OnModuleInit {
     }
   }
 
-  canCreate(user: SessionUser) {
-    return user.kind === 'dev' || env.adminIds.includes(user.id);
+  async canCreate(user: SessionUser) {
+    return this.authorization?.has(user, 'events.create') ?? user.kind === 'dev';
   }
 
-  private canManageEvent(user: SessionUser, event: CommunityEvent) {
-    return (
-      this.canCreate(user) ||
-      event.createdBy === user.id ||
-      (event.coordinatorIds ?? []).includes(user.id)
-    );
+  private async canManageEvent(user: SessionUser, event: CommunityEvent) {
+    if (event.createdBy === user.id || (event.coordinatorIds ?? []).includes(user.id)) return true;
+    if (!this.authorization) return user.kind === 'dev';
+    return (await this.authorization.has(user, 'events.update_any')) ||
+      this.authorization.has(user, 'events.update_assigned', { type: 'event', id: event.id });
   }
 
-  list(user: SessionUser) {
-    const canCreate = this.canCreate(user);
-    const events = this.store
-      .read()
-      .events.filter(
-        (event) => this.canManageEvent(user, event) || event.status === 'published',
-      )
-      .sort((left, right) => left.startsAt.localeCompare(right.startsAt))
-      .map((event) => this.project(event, user.id, this.canManageEvent(user, event)));
+  async list(user: SessionUser) {
+    const canCreate = await this.canCreate(user);
+    const source = this.store.read().events
+      .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+    const projected = await Promise.all(source.map(async (event) => ({
+      event,
+      canManage: await this.canManageEvent(user, event),
+      canAssign: event.createdBy === user.id || Boolean(
+        await this.authorization?.has(user, 'events.assign_coordinator'),
+      ),
+    })));
+    const events = projected
+      .filter(({ event, canManage }) => canManage || event.status === 'published')
+      .map(({ event, canManage, canAssign }) => this.project(event, user.id, canManage, canAssign));
     return { events, canCreate };
   }
 
-  create(user: SessionUser, input: Record<string, unknown>) {
-    if (!this.canCreate(user)) {
+  async create(user: SessionUser, input: Record<string, unknown>) {
+    if (!(await this.canCreate(user))) {
       throw new ForbiddenException('Создавать мероприятия могут только администраторы.');
     }
     const title = String(input.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -118,10 +125,13 @@ export class EventsService implements OnModuleInit {
       ),
     };
     this.store.update((current) => ({ events: [...current.events, event] }));
+    await this.authorization?.audit(user, {
+      action: 'event.create', entityType: 'event', entityId: event.id, after: event,
+    });
     return this.project(event, user.id, true);
   }
 
-  rsvp(user: SessionUser, id: string, status: string, reason: string) {
+  async rsvp(user: SessionUser, id: string, status: string, reason: string) {
     if (!(['going', 'declined', 'maybe'] as string[]).includes(status)) {
       throw new BadRequestException('Выберите: иду, не иду или пока думаю.');
     }
@@ -151,7 +161,7 @@ export class EventsService implements OnModuleInit {
       }),
     }));
     if (!updated) throw new NotFoundException('Мероприятие не найдено.');
-    return this.project(updated, user.id, this.canManageEvent(user, updated));
+    return this.project(updated, user.id, await this.canManageEvent(user, updated));
   }
 
   getPublished(id: string) {
@@ -163,14 +173,15 @@ export class EventsService implements OnModuleInit {
     return this.store.read().events.find((item) => item.id === id) ?? null;
   }
 
-  update(user: SessionUser, id: string, input: Record<string, unknown>) {
+  async update(user: SessionUser, id: string, input: Record<string, unknown>) {
+    const original = this.getById(id);
+    if (original && !(await this.canManageEvent(user, original))) {
+      throw new ForbiddenException('Редактировать мероприятие может только координатор.');
+    }
     let updated: CommunityEvent | null = null;
     this.store.update((current) => ({
       events: current.events.map((event) => {
         if (event.id !== id) return event;
-        if (!this.canManageEvent(user, event)) {
-          throw new ForbiddenException('Редактировать мероприятие может только координатор.');
-        }
         if (event.finalizedAt) {
           throw new BadRequestException('Итоги уже зафиксированы — мероприятие закрыто.');
         }
@@ -216,6 +227,9 @@ export class EventsService implements OnModuleInit {
       }),
     }));
     if (!updated) throw new NotFoundException('Мероприятие не найдено.');
+    await this.authorization?.audit(user, {
+      action: 'event.update', entityType: 'event', entityId: id, before: original, after: updated,
+    });
     return this.project(updated, user.id, true);
   }
 
@@ -269,16 +283,17 @@ export class EventsService implements OnModuleInit {
     }));
   }
 
-  setCoordinators(user: SessionUser, id: string, rawIds: unknown) {
+  async setCoordinators(user: SessionUser, id: string, rawIds: unknown) {
+    const original = this.getById(id);
+    const allowed = original && (original.createdBy === user.id ||
+      await this.authorization?.has(user, 'events.assign_coordinator'));
+    if (original && !allowed) {
+      throw new ForbiddenException('Назначать координаторов может автор мероприятия или администратор.');
+    }
     let updated: CommunityEvent | null = null;
     this.store.update((current) => ({
       events: current.events.map((event) => {
         if (event.id !== id) return event;
-        if (!this.canCreate(user) && event.createdBy !== user.id) {
-          throw new ForbiddenException(
-            'Назначать координаторов может автор мероприятия или администратор.',
-          );
-        }
         updated = {
           ...event,
           coordinatorIds: [
@@ -289,14 +304,22 @@ export class EventsService implements OnModuleInit {
       }),
     }));
     if (!updated) throw new NotFoundException('Мероприятие не найдено.');
+    await this.authorization?.audit(user, {
+      action: 'event.coordinators.update', entityType: 'event', entityId: id,
+      before: { coordinatorIds: original?.coordinatorIds ?? [] },
+      after: { coordinatorIds: (updated as CommunityEvent).coordinatorIds },
+    });
     return this.project(updated, user.id, true);
   }
 
-  setAttendance(user: SessionUser, id: string, userId: number, name: string, present: boolean) {
+  async setAttendance(user: SessionUser, id: string, userId: number, name: string, present: boolean) {
+    const original = this.getById(id);
+    if (original && !(await this.canManageEvent(user, original))) {
+      throw new ForbiddenException('Явку отмечает координатор.');
+    }
     let updated: CommunityEvent | null = null;
     this.store.update((current) => ({ events: current.events.map((event) => {
       if (event.id !== id) return event;
-      if (!this.canManageEvent(user, event)) throw new ForbiddenException('Явку отмечает координатор.');
       if (event.finalizedAt) throw new BadRequestException('Итоги мероприятия уже зафиксированы.');
       const attendance = event.attendance ?? [];
       updated = { ...event, attendance: present
@@ -306,14 +329,21 @@ export class EventsService implements OnModuleInit {
       return updated;
     }) }));
     if (!updated) throw new NotFoundException('Мероприятие не найдено.');
+    await this.authorization?.audit(user, {
+      action: 'event.attendance.update', entityType: 'event', entityId: id,
+      after: { userId, present },
+    });
     return this.project(updated, user.id, true);
   }
 
   async finalize(user: SessionUser, id: string) {
+    const original = this.getById(id);
+    if (original && !(await this.canManageEvent(user, original))) {
+      throw new ForbiddenException('Итоги фиксирует координатор.');
+    }
     let finalized: CommunityEvent | null = null;
     this.store.update((current) => ({ events: current.events.map((event) => {
       if (event.id !== id) return event;
-      if (!this.canManageEvent(user, event)) throw new ForbiddenException('Итоги фиксирует координатор.');
       if (event.finalizedAt) throw new BadRequestException('Итоги уже были зафиксированы.');
       finalized = { ...event, status: 'completed', finalizedAt: Date.now() };
       return finalized;
@@ -321,6 +351,10 @@ export class EventsService implements OnModuleInit {
     if (!finalized) throw new NotFoundException('Мероприятие не найдено.');
     const reliability = this.reliability.apply(finalized);
     await this.rating?.award(finalized);
+    await this.authorization?.audit(user, {
+      action: 'event.finalize', entityType: 'event', entityId: id,
+      before: original, after: finalized,
+    });
     return { event: this.project(finalized, user.id, true), reliability };
   }
 
@@ -329,14 +363,15 @@ export class EventsService implements OnModuleInit {
     return { profiles: this.rating ? await this.rating.list(reliability) : reliability };
   }
 
-  generateAttendanceCode(user: SessionUser, id: string) {
+  async generateAttendanceCode(user: SessionUser, id: string) {
+    const original = this.getById(id);
+    if (original && !(await this.canManageEvent(user, original))) {
+      throw new ForbiddenException('Код присутствия доступен только координаторам.');
+    }
     let updated: CommunityEvent | null = null;
     this.store.update((current) => ({
       events: current.events.map((event) => {
         if (event.id !== id) return event;
-        if (!this.canManageEvent(user, event)) {
-          throw new ForbiddenException('Код присутствия доступен только координаторам.');
-        }
         if (!event.attendanceRequired) {
           throw new BadRequestException('Для мероприятия не включено подтверждение присутствия.');
         }
@@ -351,7 +386,7 @@ export class EventsService implements OnModuleInit {
     return this.project(updated, user.id, true);
   }
 
-  confirmAttendance(user: SessionUser, id: string, rawCode: string) {
+  async confirmAttendance(user: SessionUser, id: string, rawCode: string) {
     const code = rawCode.replace(/\D/g, '').slice(0, 6);
     let updated: CommunityEvent | null = null;
     this.store.update((current) => ({
@@ -378,7 +413,7 @@ export class EventsService implements OnModuleInit {
       }),
     }));
     if (!updated) throw new NotFoundException('Мероприятие не найдено.');
-    return this.project(updated, user.id, this.canManageEvent(user, updated));
+    return this.project(updated, user.id, await this.canManageEvent(user, updated));
   }
 
   private parseCoordinatorIds(value: unknown): number[] {
@@ -446,7 +481,12 @@ export class EventsService implements OnModuleInit {
     return `${userId}:${this.ruleId(rule)}`;
   }
 
-  private project(event: CommunityEvent, userId: number, canManage: boolean) {
+  private project(
+    event: CommunityEvent,
+    userId: number,
+    canManage: boolean,
+    canAssignCoordinators = event.createdBy === userId,
+  ) {
     const counts = { going: 0, declined: 0, maybe: 0 };
     for (const response of event.rsvps) counts[response.status] += 1;
     const mine = event.rsvps.find((response) => response.userId === userId);
@@ -468,8 +508,7 @@ export class EventsService implements OnModuleInit {
       isPresent: attendance.some((item) => item.userId === userId),
       attendanceCount: attendance.length,
       canManage,
-      canAssignCoordinators:
-        env.adminIds.includes(userId) || event.createdBy === userId,
+      canAssignCoordinators,
       coordinatorIds: event.coordinatorIds ?? [event.createdBy],
       goingReminderHours: event.goingReminderHours ?? [24, 3],
       maybeReminderHours: event.maybeReminderHours ?? [72, 24, 3],

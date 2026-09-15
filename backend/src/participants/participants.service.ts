@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { SessionUser } from '../auth/types';
 import { DatabaseService } from '../database/database.service';
-import { env } from '../env';
+import { AuthorizationService } from '../authorization/authorization.service';
 
 interface ParticipantRow extends Record<string, unknown> {
   user_id: string;
@@ -37,16 +37,13 @@ const project = (row: ParticipantRow) => ({
 
 @Injectable()
 export class ParticipantsService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly authorization: AuthorizationService,
+  ) {}
 
   private async canManageAll(user: SessionUser) {
-    if (user.kind === 'dev' || env.adminIds.includes(user.id)) return true;
-    if (!this.database.enabled) return false;
-    const result = await this.database.query(
-      'SELECT 1 FROM platform_admins WHERE user_id = $1',
-      [user.id],
-    );
-    return Boolean(result.rowCount);
+    return this.authorization.has(user, 'participants.profile.update_any');
   }
 
   async touch(user: SessionUser) {
@@ -151,6 +148,11 @@ export class ParticipantsService {
       [userId, name, firstName, lastName, faculty, educationLevel, course, birthday],
     );
     if (!result.rows[0]) throw new NotFoundException('Участник не найден.');
+    await this.authorization.audit(user, {
+      action: user.id === userId ? 'participant.profile.update_self' : 'participant.profile.update_any',
+      entityType: 'participant', entityId: userId,
+      after: project(result.rows[0]),
+    });
     return project(result.rows[0]);
   }
 }

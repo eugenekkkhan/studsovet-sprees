@@ -11,6 +11,7 @@ import { MediaModule } from './media/media.module';
 import { QuizModule } from './quiz/quiz.module';
 import { StaticModule } from './static/static.module';
 import { TelegramModule } from './telegram/telegram.module';
+import { AuthorizationModule } from './authorization/authorization.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { TelegramModule } from './telegram/telegram.module';
     TelegramModule,
     AuthModule,
     DatabaseModule,
+    AuthorizationModule,
     ParticipantsModule,
     DecksModule,
     EventsModule,

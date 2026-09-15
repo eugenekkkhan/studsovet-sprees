@@ -24,7 +24,7 @@ export class EventsController {
 
   @Post()
   async create(@CurrentUser() user: SessionUser, @Body() body: Record<string, unknown>) {
-    const event = this.events.create(user, body ?? {});
+    const event = await this.events.create(user, body ?? {});
     await this.announcements.publish(event);
     return event;
   }
@@ -35,7 +35,7 @@ export class EventsController {
     @Param('id') id: string,
     @Body() body: Record<string, unknown>,
   ) {
-    const event = this.events.update(user, id, body ?? {});
+    const event = await this.events.update(user, id, body ?? {});
     await this.announcements.refresh(id);
     return event;
   }

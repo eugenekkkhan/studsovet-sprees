@@ -149,6 +149,89 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         blocked_by BIGINT NOT NULL,
         blocked_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+
+      CREATE TABLE IF NOT EXISTS roles (
+        id BIGSERIAL PRIMARY KEY,
+        role_key TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        system BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE TABLE IF NOT EXISTS permissions (
+        permission_key TEXT PRIMARY KEY,
+        description TEXT NOT NULL DEFAULT '',
+        risk_level TEXT NOT NULL DEFAULT 'normal'
+          CHECK (risk_level IN ('normal', 'high', 'critical'))
+      );
+      CREATE TABLE IF NOT EXISTS role_permissions (
+        role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+        permission_key TEXT NOT NULL REFERENCES permissions(permission_key) ON DELETE CASCADE,
+        PRIMARY KEY (role_id, permission_key)
+      );
+      CREATE TABLE IF NOT EXISTS role_assignments (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+        scope_type TEXT NOT NULL DEFAULT 'global'
+          CHECK (scope_type IN ('global', 'chat', 'event', 'event_tag', 'game', 'self')),
+        scope_id TEXT NOT NULL DEFAULT '',
+        granted_by BIGINT NOT NULL,
+        granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS role_assignments_active_user_idx
+        ON role_assignments (user_id) WHERE revoked_at IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS role_assignments_active_unique_idx
+        ON role_assignments (user_id, role_id, scope_type, scope_id) WHERE revoked_at IS NULL;
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id BIGSERIAL PRIMARY KEY,
+        actor_user_id BIGINT NOT NULL,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT,
+        before_value JSONB,
+        after_value JSONB,
+        reason TEXT,
+        request_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log (created_at DESC);
+      CREATE INDEX IF NOT EXISTS audit_log_entity_idx
+        ON audit_log (entity_type, entity_id, created_at DESC);
+
+      INSERT INTO roles (role_key, name, description, system) VALUES
+        ('platform_admin', 'Главный администратор', 'Полное повседневное управление платформой', true),
+        ('event_manager', 'Менеджер мероприятий', 'Создание и управление мероприятиями', true),
+        ('game_admin', 'Игровой администратор', 'Игровые комнаты и модерация колод', true)
+      ON CONFLICT (role_key) DO NOTHING;
+
+      INSERT INTO permissions (permission_key) VALUES
+        ('platform.settings.read'), ('platform.settings.update'), ('platform.features.manage'),
+        ('platform.roles.read'), ('platform.roles.assign'), ('platform.roles.define'),
+        ('platform.audit.read'), ('participants.read'), ('participants.profile.update_self'),
+        ('participants.profile.update_any'), ('events.read'), ('events.create'),
+        ('events.update_assigned'), ('events.update_any'), ('events.assign_coordinator'),
+        ('events.attendance.manage'), ('events.finalize'), ('games.sessions.read'),
+        ('games.sessions.terminate'), ('games.creation_bans.manage'), ('decks.moderate')
+      ON CONFLICT (permission_key) DO NOTHING;
+
+      INSERT INTO role_permissions (role_id, permission_key)
+      SELECT r.id, p.permission_key FROM roles r CROSS JOIN permissions p
+      WHERE r.role_key = 'platform_admin'
+      ON CONFLICT DO NOTHING;
+      INSERT INTO role_permissions (role_id, permission_key)
+      SELECT r.id, p.permission_key FROM roles r JOIN permissions p ON p.permission_key IN
+        ('events.read', 'events.create', 'events.update_assigned', 'events.update_any',
+         'events.assign_coordinator', 'events.attendance.manage', 'events.finalize')
+      WHERE r.role_key = 'event_manager'
+      ON CONFLICT DO NOTHING;
+      INSERT INTO role_permissions (role_id, permission_key)
+      SELECT r.id, p.permission_key FROM roles r JOIN permissions p ON p.permission_key IN
+        ('games.sessions.read', 'games.sessions.terminate', 'games.creation_bans.manage', 'decks.moderate')
+      WHERE r.role_key = 'game_admin'
+      ON CONFLICT DO NOTHING;
     `);
   }
 
