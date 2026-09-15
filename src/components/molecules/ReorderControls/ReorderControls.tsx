@@ -1,10 +1,6 @@
-import {
-  IoArrowDownOutline,
-  IoArrowUpOutline,
-  IoReorderThreeOutline,
-} from "react-icons/io5";
+import { IoArrowDownOutline, IoArrowUpOutline } from "react-icons/io5";
 import { IconButton, Stack } from "../../atoms";
-import { useDragHandleContext } from "../SortableList/dragHandle";
+import DragHandle from "../SortableList/DragHandle";
 
 interface ReorderControlsProps {
   /** Родительный падеж: «раунд», «тему», «клетку». */
@@ -29,8 +25,6 @@ const ReorderControls = ({
   disabledDown = false,
   keepOpen = false,
 }: ReorderControlsProps) => {
-  const handle = useDragHandleContext();
-
   return (
     <Stack
       direction="row"
@@ -38,17 +32,7 @@ const ReorderControls = ({
       align="center"
       onClick={keepOpen ? (event) => event.preventDefault() : undefined}
     >
-      {handle && (
-        <IconButton
-          size="sm"
-          label={`Перетащить ${what}`}
-          style={{ cursor: handle.isDragging ? "grabbing" : "grab" }}
-          {...handle.attributes}
-          {...handle.listeners}
-        >
-          <IoReorderThreeOutline aria-hidden />
-        </IconButton>
-      )}
+      <DragHandle what={what} />
       <IconButton
         size="sm"
         label={`Поднять ${what} выше`}

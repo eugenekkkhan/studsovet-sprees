@@ -5,6 +5,7 @@ import type {
   DeckTheme,
   FinalTheme,
 } from "../../types/quiz";
+import { reorderBy } from "../reorder";
 import {
   createFinalTheme,
   createQuestion,
@@ -29,15 +30,7 @@ export const reorderById = <T extends Identified>(
   items: T[],
   fromId: string,
   toId: string,
-): T[] => {
-  const from = items.findIndex((item) => item.id === fromId);
-  const to = items.findIndex((item) => item.id === toId);
-  if (from < 0 || to < 0 || from === to) return items;
-  const next = [...items];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  return next;
-};
+): T[] => reorderBy(items, (item) => item.id, fromId, toId);
 
 /** Сдвиг элемента на одну позицию — порядок тем и клеток важен на табло. */
 export const moveById = <T extends Identified>(
