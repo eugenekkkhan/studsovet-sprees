@@ -3,7 +3,7 @@ name: Deploy test.traapp.ru
 on:
   workflow_dispatch:
   push:
-    branches: [test]
+    branches: [master]
 
 concurrency:
   group: test-traapp-deploy
