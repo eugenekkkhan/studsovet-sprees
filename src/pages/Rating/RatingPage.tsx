@@ -106,6 +106,8 @@ const RatingPage = () => {
                 collapsed={table.collapsed}
                 onCollapsed={table.setCollapsed}
                 onReset={table.reset}
+                order={table.filterOrder}
+                onOrder={table.setFilterOrder}
                 views={table.views}
                 onSaveView={table.saveView}
                 onApplyView={table.applyView}

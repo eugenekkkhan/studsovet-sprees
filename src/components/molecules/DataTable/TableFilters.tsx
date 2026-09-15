@@ -2,6 +2,10 @@ import { useState, type ReactNode } from "react";
 import { DropdownMenu } from "radix-ui";
 import { TbBookmark, TbFilter, TbPlus, TbX } from "react-icons/tb";
 import { Button, Card, IconButton, Input, Select, Stack, Text } from "../../atoms";
+import DragHandle from "../SortableList/DragHandle";
+import SortableItem from "../SortableList/SortableItem";
+import SortableList from "../SortableList/SortableList";
+import { applyOrder, reorderKeys } from "../../../utils/reorder";
 import type { DataTableColumn } from "./DataTable";
 import type { TableView } from "../../../hooks/useTableState";
 import { activeFilters, describeFilter, isFilterActive, type ColumnFilter, type FilterValue, type FilterValues } from "./filtering";
@@ -20,6 +24,9 @@ interface TableFiltersProps<T> {
   /** Ряд управления сортировкой — он живёт своей жизнью и приходит снаружи. */
   sortRow: ReactNode;
   onReset: () => void;
+  /** Пользовательский порядок полей отбора — результат перетаскивания. */
+  order: string[];
+  onOrder: (order: string[]) => void;
   /** Именованные наборы отбора — они же «мои фильтры». */
   views: TableView[];
   onSaveView: (name: string) => void;
@@ -106,7 +113,7 @@ function FilterControl<T>({ label, filter, value, onChange }: {
 export function TableFilters<T>({
   columns, values, onChange, search, onSearch, searchPlaceholder,
   shown, total, collapsed, onCollapsed, sortRow, onReset,
-  views, onSaveView, onApplyView, onRemoveView,
+  order, onOrder, views, onSaveView, onApplyView, onRemoveView,
 }: TableFiltersProps<T>) {
   const [viewName, setViewName] = useState("");
   // Добавленный фильтр остаётся на экране, даже пока пустой; фильтр со
@@ -114,9 +121,14 @@ export function TableFilters<T>({
   const [added, setAdded] = useState<string[]>([]);
 
   const filterable = columns.filter((column) => column.filter);
+  // Раскладку задаёт пользователь, а не порядок колонок в таблице: чаще всего
+  // нужные поля поднимаются наверх и остаются там между сеансами.
+  const byKey = new Map(filterable.map((column) => [column.key, column]));
+  const orderedKeys = applyOrder(filterable.map((column) => column.key), order);
+  const ordered = orderedKeys.flatMap((key) => byKey.get(key) ?? []);
   const isOpen = (key: string) => added.includes(key) || isFilterActive(values[key]);
-  const open = filterable.filter((column) => isOpen(column.key));
-  const closed = filterable.filter((column) => !isOpen(column.key));
+  const open = ordered.filter((column) => isOpen(column.key));
+  const closed = ordered.filter((column) => !isOpen(column.key));
   const count = activeFilters(values) + (search.trim() ? 1 : 0);
 
   const set = (key: string, next: FilterValue | undefined) => {
@@ -157,7 +169,7 @@ export function TableFilters<T>({
             <span>Поиск: {search.trim()}</span>
             <IconButton size="sm" label="Очистить поиск" onClick={() => onSearch("")}><TbX aria-hidden /></IconButton>
           </Stack>}
-          {filterable.map((column) => {
+          {ordered.map((column) => {
             const value = values[column.key];
             if (!isFilterActive(value)) return null;
             return <Stack key={column.key} direction="row" gap="2xs" align="center" className="ui-surface bg-surface-muted py-2xs pr-2xs pl-sm text-sm">
@@ -170,20 +182,30 @@ export function TableFilters<T>({
         {!collapsed && <>
           <Input type="search" value={search} placeholder={searchPlaceholder} aria-label={searchPlaceholder} onChange={(event) => onSearch(event.target.value)} />
 
-          {open.length > 0 && <div className="grid gap-sm md:grid-cols-2">
-            {open.map((column) => <Stack key={column.key} gap="2xs">
-              <Stack direction="row" align="center" justify="between" gap="2xs">
-                <Text size="sm" tone="muted">{column.label}</Text>
-                <IconButton size="sm" label={`Убрать фильтр «${column.label}»`} onClick={() => drop(column.key)}><TbX aria-hidden /></IconButton>
+          {open.length > 0 && <SortableList
+            layout="grid"
+            className="grid gap-sm md:grid-cols-2"
+            items={open.map((column) => column.key)}
+            onReorder={(fromId, toId) => onOrder(reorderKeys(orderedKeys, fromId, toId))}
+          >
+            {open.map((column) => <SortableItem key={column.key} id={column.key}>
+              <Stack gap="2xs">
+                <Stack direction="row" align="center" justify="between" gap="2xs">
+                  <Stack direction="row" align="center" gap="2xs">
+                    <DragHandle what={`фильтр «${column.label}»`} />
+                    <Text size="sm" tone="muted">{column.label}</Text>
+                  </Stack>
+                  <IconButton size="sm" label={`Убрать фильтр «${column.label}»`} onClick={() => drop(column.key)}><TbX aria-hidden /></IconButton>
+                </Stack>
+                <FilterControl
+                  label={column.label}
+                  filter={column.filter as ColumnFilter<T>}
+                  value={values[column.key]}
+                  onChange={(next) => set(column.key, next)}
+                />
               </Stack>
-              <FilterControl
-                label={column.label}
-                filter={column.filter as ColumnFilter<T>}
-                value={values[column.key]}
-                onChange={(next) => set(column.key, next)}
-              />
-            </Stack>)}
-          </div>}
+            </SortableItem>)}
+          </SortableList>}
 
           {closed.length > 0 && <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>

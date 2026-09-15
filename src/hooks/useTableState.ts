@@ -41,6 +41,7 @@ export const useTableState = ({ name, defaultSort }: TableStateOptions) => {
     saved: `sprees:${name}:state`,
     views: `sprees:${name}:views`,
     collapsed: `sprees:${name}:collapsed`,
+    filterOrder: `sprees:${name}:filterOrder`,
   }), [name]);
 
   const [search, setSearch] = useState(() =>
@@ -55,6 +56,10 @@ export const useTableState = ({ name, defaultSort }: TableStateOptions) => {
   });
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(keys.collapsed) === "1");
   const [views, setViews] = useState<TableView[]>(() => parse(localStorage.getItem(keys.views), [] as TableView[]));
+  // Порядок полей отбора не идёт в адрес: он ничего не отсеивает, и ссылка на
+  // отфильтрованный список не должна тащить за собой чужую раскладку панели.
+  const [filterOrder, setFilterOrder] = useState<string[]>(() =>
+    parse(localStorage.getItem(keys.filterOrder), [] as string[]));
 
   useEffect(() => {
     localStorage.setItem(keys.saved, JSON.stringify({ search, filters, sort }));
@@ -70,6 +75,10 @@ export const useTableState = ({ name, defaultSort }: TableStateOptions) => {
   }, [collapsed, filters, keys, search, sort]);
 
   useEffect(() => { localStorage.setItem(keys.views, JSON.stringify(views)); }, [keys.views, views]);
+
+  useEffect(() => {
+    localStorage.setItem(keys.filterOrder, JSON.stringify(filterOrder));
+  }, [keys.filterOrder, filterOrder]);
 
   const reset = useCallback(() => {
     setSearch("");
@@ -96,6 +105,7 @@ export const useTableState = ({ name, defaultSort }: TableStateOptions) => {
     filters, setFilters,
     sort, setSort,
     collapsed, setCollapsed,
+    filterOrder, setFilterOrder,
     views, saveView, applyView, removeView,
     reset,
   };
