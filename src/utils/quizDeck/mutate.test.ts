@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDeck } from "./factory";
 import {
-  moveById,
-  moveQuestion,
   reorderById,
   reorderQuestions,
   reorderRounds,
@@ -21,13 +19,6 @@ describe("перестановки в колоде", () => {
   it("не трогает список, если тащить некуда", () => {
     expect(reorderById(named, "a", "a")).toBe(named);
     expect(reorderById(named, "a", "нет такого")).toBe(named);
-    expect(moveById(named, "a", -1)).toBe(named);
-    expect(moveById(named, "d", 1)).toBe(named);
-  });
-
-  it("двигает соседей стрелками", () => {
-    expect(ids(moveById(named, "b", -1))).toEqual(["b", "a", "c", "d"]);
-    expect(ids(moveById(named, "b", 1))).toEqual(["a", "c", "b", "d"]);
   });
 
   it("переставляет раунды, темы и клетки колоды", () => {
@@ -51,8 +42,5 @@ describe("перестановки в колоде", () => {
     expect(
       ids(reorderQuestions(deck, round.id, theme.id, q1, q3).rounds[0].themes[0].questions),
     ).toEqual([q2, q3, q1]);
-    expect(
-      ids(moveQuestion(deck, round.id, theme.id, q3, -1).rounds[0].themes[0].questions),
-    ).toEqual([q1, q3, q2]);
   });
 });

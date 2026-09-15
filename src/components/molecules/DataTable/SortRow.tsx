@@ -1,4 +1,4 @@
-import { TbArrowNarrowLeft, TbArrowNarrowRight, TbSortAscending, TbSortDescending, TbX } from "react-icons/tb";
+import { TbArrowNarrowRight, TbSortAscending, TbSortDescending, TbX } from "react-icons/tb";
 import { Button, IconButton, Select, Stack, Text } from "../../atoms";
 import DragHandle from "../SortableList/DragHandle";
 import SortableItem from "../SortableList/SortableItem";
@@ -13,21 +13,14 @@ interface SortRowProps<T> {
   onSort: (sort: SortCriterion[]) => void;
 }
 
-const swap = (sort: SortCriterion[], index: number, offset: -1 | 1) => {
-  const target = index + offset;
-  if (target < 0 || target >= sort.length) return sort;
-  const next = [...sort];
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
-};
-
 /**
  * Управление сортировкой списком критериев. Заголовок таблицы — быстрый путь
  * для одной колонки; здесь видно всю очередь и её можно переставить, чего
  * раньше нельзя было сделать иначе как удалив и добавив критерии заново.
  *
- * Очередь перетаскивается, но стрелки остаются: с клавиатуры и на узком
- * экране они короче, а перетаскивание одной рукой на телефоне — лотерея.
+ * Очередь переставляется перетаскиванием — за ручку мышью, пальцем или с
+ * клавиатуры. Стрелка между критериями показывает направление очереди и
+ * ничего не делает: двигать ими было вторым способом сделать то же самое.
  */
 export function SortRow<T>({ columns, sort, onSort }: SortRowProps<T>) {
   const options = sortOptionsOf(columns);
@@ -50,16 +43,10 @@ export function SortRow<T>({ columns, sort, onSort }: SortRowProps<T>) {
               <Stack direction="row" align="center" gap="2xs">
                 {index > 0 && <TbArrowNarrowRight className="text-muted-foreground" aria-hidden />}
                 <DragHandle what={`критерий «${labelOf(criterion.key)}»`} />
-                <IconButton size="sm" label={`«${labelOf(criterion.key)}»: раньше в очереди`} disabled={index === 0} onClick={() => onSort(swap(sort, index, -1))}>
-                  <TbArrowNarrowLeft aria-hidden />
-                </IconButton>
                 <Button size="sm" variant="neutral" onClick={() => onSort(sort.map((item) =>
                   item.key === criterion.key ? { ...item, direction: item.direction === "asc" ? "desc" : "asc" } : item))}>
                   {labelOf(criterion.key)} {criterion.direction === "asc" ? <TbSortAscending aria-hidden /> : <TbSortDescending aria-hidden />}
                 </Button>
-                <IconButton size="sm" label={`«${labelOf(criterion.key)}»: позже в очереди`} disabled={index === sort.length - 1} onClick={() => onSort(swap(sort, index, 1))}>
-                  <TbArrowNarrowRight aria-hidden />
-                </IconButton>
                 <IconButton size="sm" label={`Убрать сортировку «${labelOf(criterion.key)}»`} onClick={() => onSort(sort.filter((item) => item.key !== criterion.key))}>
                   <TbX aria-hidden />
                 </IconButton>

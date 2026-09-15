@@ -25,26 +25,19 @@ describe("очередь сортировки", () => {
     expect(screen.getByRole("button", { name: "Перетащить критерий «Имя»" })).toBeInTheDocument();
   });
 
-  /**
-   * Перетаскивание — не единственный путь: стрелки нужны с клавиатуры и на
-   * узком экране, поэтому они обязаны пережить появление ручки.
-   */
-  it("оставляет стрелки рабочими", async () => {
+  /** Порядок задаётся только перетаскиванием — кнопок-дублёров быть не должно. */
+  it("не держит кнопок перемещения рядом с ручкой", () => {
+    render(<SortRow columns={columns} sort={sort} onSort={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: /в очереди$/ })).toBeNull();
+  });
+
+  it("оставляет переключение направления и снятие критерия", async () => {
     const onSort = vi.fn();
     render(<SortRow columns={columns} sort={sort} onSort={onSort} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "«Имя»: раньше в очереди" }));
+    await userEvent.click(screen.getByRole("button", { name: "Убрать сортировку «Баллы»" }));
 
-    expect(onSort).toHaveBeenCalledWith([
-      { key: "name", direction: "asc" },
-      { key: "score", direction: "desc" },
-    ]);
-  });
-
-  it("не предлагает двигать крайние критерии за край", () => {
-    render(<SortRow columns={columns} sort={sort} onSort={vi.fn()} />);
-
-    expect(screen.getByRole("button", { name: "«Баллы»: раньше в очереди" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "«Имя»: позже в очереди" })).toBeDisabled();
+    expect(onSort).toHaveBeenCalledWith([{ key: "name", direction: "asc" }]);
   });
 });

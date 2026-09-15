@@ -1,9 +1,9 @@
 import { Popover } from "radix-ui";
 import { TbArrowBarToLeft, TbArrowBarToRight } from "react-icons/tb";
 import { Button, Card, IconButton, Stack, Text } from "../../atoms";
+import DragHandle from "../SortableList/DragHandle";
 import SortableItem from "../SortableList/SortableItem";
 import SortableList from "../SortableList/SortableList";
-import ReorderControls from "../ReorderControls/ReorderControls";
 import type { DataTableColumn, PinSide } from "./DataTable";
 
 interface ColumnsMenuProps<T> {
@@ -16,7 +16,6 @@ interface ColumnsMenuProps<T> {
   pinnable: boolean;
   onToggle: (key: string, shown: boolean) => void;
   onPin: (key: string, side: "left" | "right") => void;
-  onMove: (key: string, offset: -1 | 1) => void;
   onReorder: (fromKey: string, toKey: string) => void;
   onReset: () => void;
 }
@@ -26,17 +25,14 @@ interface ColumnRowProps {
   shown: boolean;
   lockedShown: boolean;
   pin: PinSide;
-  first: boolean;
-  last: boolean;
   pinnable: boolean;
   onToggle: (shown: boolean) => void;
   onPin: (side: "left" | "right") => void;
-  onMove: (offset: -1 | 1) => void;
 }
 
-const ColumnRow = ({ label, shown, lockedShown, pin, first, last, pinnable, onToggle, onPin, onMove }: ColumnRowProps) => (
+const ColumnRow = ({ label, shown, lockedShown, pin, pinnable, onToggle, onPin }: ColumnRowProps) => (
   <Stack direction="row" gap="2xs" align="center">
-    <ReorderControls what="колонку" onUp={() => onMove(-1)} onDown={() => onMove(1)} disabledUp={first} disabledDown={last} />
+    <DragHandle what="колонку" />
     <label className="flex min-w-0 flex-1 items-center gap-xs text-sm">
       <input type="checkbox" checked={shown} disabled={lockedShown} onChange={(event) => onToggle(event.target.checked)} />
       <span className="truncate">{label}</span>
@@ -67,7 +63,7 @@ const ColumnRow = ({ label, shown, lockedShown, pin, first, last, pinnable, onTo
  * Закрытие по Escape, клику вне и возврат фокуса на кнопку — от Radix.
  */
 export function ColumnsMenu<T>({
-  columns, hidden, pinned, visibleCount, pinnable, onToggle, onPin, onMove, onReorder, onReset,
+  columns, hidden, pinned, visibleCount, pinnable, onToggle, onPin, onReorder, onReset,
 }: ColumnsMenuProps<T>) {
   return (
     <Popover.Root>
@@ -80,19 +76,16 @@ export function ColumnsMenu<T>({
             <Stack gap="xs">
               <Text size="sm" weight={700}>Показ и порядок колонок</Text>
               <SortableList items={columns.map((column) => column.key)} gap="2xs" onReorder={onReorder}>
-                {columns.map((column, index) => (
+                {columns.map((column) => (
                   <SortableItem key={column.key} id={column.key}>
                     <ColumnRow
                       label={column.label}
                       shown={!hidden.includes(column.key)}
                       lockedShown={column.hideable === false}
                       pin={pinned[column.key] ?? "none"}
-                      first={index === 0}
-                      last={index === columns.length - 1}
                       pinnable={pinnable}
                       onToggle={(shown) => onToggle(column.key, shown)}
                       onPin={(side) => onPin(column.key, side)}
-                      onMove={(offset) => onMove(column.key, offset)}
                     />
                   </SortableItem>
                 ))}

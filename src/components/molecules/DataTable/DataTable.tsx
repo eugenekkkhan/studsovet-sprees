@@ -8,6 +8,7 @@ import { GAP, pageWindow } from "./pagination";
 import { escapeCsv } from "./csv";
 import type { ColumnFilter } from "./filtering";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
+import { reorderKeys } from "../../../utils/reorder";
 
 export interface DataTableColumn<T> {
   key: string;
@@ -80,23 +81,6 @@ const readSavedState = (key: string): SavedTableState => {
     const saved = JSON.parse(localStorage.getItem(key) ?? "{}") as SavedTableState;
     return saved.version === STATE_VERSION ? saved : {};
   } catch { return {}; }
-};
-
-/** Перестановка ключа на место другого — та же семантика, что у dnd-kit. */
-const reorderKeys = (keys: string[], fromKey: string, toKey: string) => {
-  const next = [...keys];
-  const from = next.indexOf(fromKey);
-  const to = next.indexOf(toKey);
-  if (from < 0 || to < 0) return keys;
-  next.splice(to, 0, ...next.splice(from, 1));
-  return next;
-};
-
-/** Сдвиг на соседа — клавиатурный дублёр перетаскивания. */
-const moveKey = (keys: string[], key: string, offset: -1 | 1) => {
-  const from = keys.indexOf(key);
-  const to = from + offset;
-  return from < 0 || to < 0 || to >= keys.length ? keys : reorderKeys(keys, key, keys[to]);
 };
 
 export function DataTable<T>({ name, label, rows, columns, rowKey, sort, onSort, tiebreak, emptyText = "Строк нет.", onResetFilters }: DataTableProps<T>) {
@@ -219,7 +203,6 @@ export function DataTable<T>({ name, label, rows, columns, rowKey, sort, onSort,
             if (!shown) onSort(sort.filter((item) => item.key !== key));
           }}
           onPin={(key, side) => setPinned((current) => ({ ...current, [key]: current[key] === side ? "none" : side }))}
-          onMove={(key, offset) => setColumnOrder(moveKey(ordered.map((column) => column.key), key, offset))}
           onReorder={(fromKey, toKey) => setColumnOrder(reorderKeys(ordered.map((column) => column.key), fromKey, toKey))}
           onReset={() => { setHidden([]); setWidths({}); setColumnOrder([]); setPinned({}); }}
         />

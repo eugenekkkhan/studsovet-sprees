@@ -1,5 +1,5 @@
 import { Button, Card, Input, Stack, Text, TextArea } from "../../../atoms";
-import { MediaField, ReorderControls, Tabs } from "../../../molecules";
+import { DragHandle, MediaField, Tabs } from "../../../molecules";
 import { useQuizGame } from "../../../../hooks/useQuizGame";
 import type { DeckQuestion, QuestionType } from "../../../../types/quiz";
 import { QUESTION_TYPE_HINT, QUESTION_TYPE_LABEL } from "../../../../utils/quizLabels";
@@ -9,20 +9,14 @@ const typeTabs: { value: QuestionType; label: string }[] = (
 
 interface DeckQuestionEditorProps {
   question: DeckQuestion;
-  index: number;
-  total: number;
   onChange: (patch: Partial<DeckQuestion>) => void;
-  onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
 }
 
 /** Одна клетка колоды: цена, тип, текст, ответ и медиа. */
 const DeckQuestionEditor = ({
   question,
-  index,
-  total,
   onChange,
-  onMove,
   onRemove,
 }: DeckQuestionEditorProps) => {
   const { uploadMedia } = useQuizGame();
@@ -50,13 +44,7 @@ const DeckQuestionEditor = ({
               onChange={(type) => onChange({ type })}
             />
           </div>
-          <ReorderControls
-            what="клетку"
-            disabledUp={index === 0}
-            disabledDown={index === total - 1}
-            onUp={() => onMove(-1)}
-            onDown={() => onMove(1)}
-          />
+          <DragHandle what="клетку" />
           <Button size="sm" variant="danger" onClick={onRemove}>
             Удалить
           </Button>

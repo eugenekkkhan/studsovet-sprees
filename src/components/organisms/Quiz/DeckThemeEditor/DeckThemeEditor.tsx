@@ -1,11 +1,9 @@
 import { Button, Card, Input, Stack, Text } from "../../../atoms";
-import { ReorderControls, SortableItem, SortableList } from "../../../molecules";
+import { DragHandle, SortableItem, SortableList } from "../../../molecules";
 import DeckQuestionEditor from "../DeckQuestionEditor/DeckQuestionEditor";
 import type { Deck, DeckTheme } from "../../../../types/quiz";
 import {
   addQuestion,
-  moveQuestion,
-  moveTheme,
   removeQuestion,
   removeTheme,
   reorderQuestions,
@@ -16,8 +14,6 @@ interface DeckThemeEditorProps {
   deck: Deck;
   roundId: string;
   theme: DeckTheme;
-  index: number;
-  total: number;
   onChange: (deck: Deck) => void;
 }
 
@@ -26,8 +22,6 @@ const DeckThemeEditor = ({
   deck,
   roundId,
   theme,
-  index,
-  total,
   onChange,
 }: DeckThemeEditorProps) => {
   const filled = theme.questions.filter(
@@ -51,14 +45,7 @@ const DeckThemeEditor = ({
             </Text>
           )}
           <span className="ml-auto flex items-center gap-xs">
-            <ReorderControls
-              what="тему"
-              keepOpen
-              disabledUp={index === 0}
-              disabledDown={index === total - 1}
-              onUp={() => onChange(moveTheme(deck, roundId, theme.id, -1))}
-              onDown={() => onChange(moveTheme(deck, roundId, theme.id, 1))}
-            />
+            <DragHandle what="тему" keepOpen />
             <Button
               size="sm"
               variant="danger"
@@ -91,17 +78,12 @@ const DeckThemeEditor = ({
               onChange(reorderQuestions(deck, roundId, theme.id, fromId, toId))
             }
           >
-            {theme.questions.map((question, questionIndex) => (
+            {theme.questions.map((question) => (
               <SortableItem key={question.id} id={question.id}>
                 <DeckQuestionEditor
                   question={question}
-                  index={questionIndex}
-                  total={theme.questions.length}
                   onChange={(patch) =>
                     onChange(updateQuestion(deck, roundId, theme.id, question.id, patch))
-                  }
-                  onMove={(direction) =>
-                    onChange(moveQuestion(deck, roundId, theme.id, question.id, direction))
                   }
                   onRemove={() =>
                     onChange(removeQuestion(deck, roundId, theme.id, question.id))

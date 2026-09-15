@@ -32,20 +32,6 @@ export const reorderById = <T extends Identified>(
   toId: string,
 ): T[] => reorderBy(items, (item) => item.id, fromId, toId);
 
-/** Сдвиг элемента на одну позицию — порядок тем и клеток важен на табло. */
-export const moveById = <T extends Identified>(
-  items: T[],
-  id: string,
-  direction: -1 | 1,
-): T[] => {
-  const index = items.findIndex((item) => item.id === id);
-  const target = index + direction;
-  if (index < 0 || target < 0 || target >= items.length) return items;
-  const next = [...items];
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
-};
-
 const mapRound = (
   deck: Deck,
   roundId: string,
@@ -83,11 +69,6 @@ export const removeRound = (deck: Deck, roundId: string): Deck => ({
   rounds: withoutId(deck.rounds, roundId),
 });
 
-export const moveRound = (deck: Deck, roundId: string, direction: -1 | 1): Deck => ({
-  ...deck,
-  rounds: moveById(deck.rounds, roundId, direction),
-});
-
 export const reorderRounds = (deck: Deck, fromId: string, toId: string): Deck => ({
   ...deck,
   rounds: reorderById(deck.rounds, fromId, toId),
@@ -120,17 +101,6 @@ export const removeTheme = (deck: Deck, roundId: string, themeId: string): Deck 
   mapRound(deck, roundId, (round) => ({
     ...round,
     themes: withoutId(round.themes, themeId),
-  }));
-
-export const moveTheme = (
-  deck: Deck,
-  roundId: string,
-  themeId: string,
-  direction: -1 | 1,
-): Deck =>
-  mapRound(deck, roundId, (round) => ({
-    ...round,
-    themes: moveById(round.themes, themeId, direction),
   }));
 
 export const reorderThemes = (
@@ -179,18 +149,6 @@ export const removeQuestion = (
   mapTheme(deck, roundId, themeId, (theme) => ({
     ...theme,
     questions: withoutId(theme.questions, questionId),
-  }));
-
-export const moveQuestion = (
-  deck: Deck,
-  roundId: string,
-  themeId: string,
-  questionId: string,
-  direction: -1 | 1,
-): Deck =>
-  mapTheme(deck, roundId, themeId, (theme) => ({
-    ...theme,
-    questions: moveById(theme.questions, questionId, direction),
   }));
 
 export const reorderQuestions = (

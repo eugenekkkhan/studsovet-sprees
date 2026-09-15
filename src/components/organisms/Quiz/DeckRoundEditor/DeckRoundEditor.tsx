@@ -1,10 +1,9 @@
 import { Button, Card, Heading, Input, Stack, Text } from "../../../atoms";
-import { ReorderControls, SortableItem, SortableList } from "../../../molecules";
+import { DragHandle, SortableItem, SortableList } from "../../../molecules";
 import DeckThemeEditor from "../DeckThemeEditor/DeckThemeEditor";
 import type { Deck, DeckRound } from "../../../../types/quiz";
 import {
   addTheme,
-  moveRound,
   removeRound,
   reorderThemes,
   updateRound,
@@ -37,13 +36,7 @@ const DeckRoundEditor = ({ deck, round, index, onChange }: DeckRoundEditorProps)
               onChange(updateRound(deck, round.id, { name: event.target.value }))
             }
           />
-          <ReorderControls
-            what="раунд"
-            disabledUp={index === 0}
-            disabledDown={index === deck.rounds.length - 1}
-            onUp={() => onChange(moveRound(deck, round.id, -1))}
-            onDown={() => onChange(moveRound(deck, round.id, 1))}
-          />
+          <DragHandle what="раунд" />
           <Button
             size="sm"
             variant="danger"
@@ -67,14 +60,12 @@ const DeckRoundEditor = ({ deck, round, index, onChange }: DeckRoundEditorProps)
             onChange(reorderThemes(deck, round.id, fromId, toId))
           }
         >
-          {round.themes.map((theme, themeIndex) => (
+          {round.themes.map((theme) => (
             <SortableItem key={theme.id} id={theme.id}>
               <DeckThemeEditor
                 deck={deck}
                 roundId={round.id}
                 theme={theme}
-                index={themeIndex}
-                total={round.themes.length}
                 onChange={onChange}
               />
             </SortableItem>
